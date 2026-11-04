@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Azure SRE console</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 12h3l1.5-3 3 6 1.5-3h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div><strong>Azure SRE console</strong><span id="app-name" class="muted"></span></div>
+        </div>
+        <span class="chip mode" title="Azure SRE Agent proposes write actions; a human approves or denies each one.">Review mode</span>
+    </header>
+    <nav id="tabs" class="tabs" aria-label="Incidents"></nav>
+    <main>
+        <section id="alert" class="alert" aria-live="polite"></section>
+
+        <section class="card">
+            <header><h2>Service map</h2><span class="legend"><i class="healthy"></i>healthy <i class="degraded"></i>degraded <i class="down"></i>down</span></header>
+            <div id="topology" class="topology"></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">1</span>Investigate</h2><span id="signal-count" class="muted"></span></header>
+            <p class="hint" id="investigate-hint">Run signals the way Azure SRE Agent does: Log Analytics queries over Container Insights, plus kubectl.</p>
+            <div id="signals" class="signals"></div>
+            <div id="evidence" class="evidence-list"></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">2</span>Diagnose</h2></header>
+            <p class="hint" id="diagnose-hint"></p>
+            <div id="causes" class="options" role="radiogroup" aria-label="Root cause"></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">3</span>Mitigate</h2></header>
+            <p class="hint" id="mitigate-hint"></p>
+            <div id="fixes" class="options"></div>
+            <div id="proposal" class="proposal" hidden>
+                <div class="proposal-head"><span class="chip pending">Awaiting approval</span><span id="proposal-by" class="muted"></span></div>
+                <h3 id="proposal-title"></h3>
+                <p id="proposal-rationale"></p>
+                <pre><code id="proposal-command"></code></pre>
+                <p id="proposal-risk" class="risk"></p>
+                <div class="approve-row">
+                    <label for="approver">Approver</label>
+                    <input id="approver" placeholder="@your-github-handle" autocomplete="off" spellcheck="false" maxlength="40">
+                    <button id="approve" class="primary" type="button">Approve</button>
+                    <button id="deny" type="button">Deny</button>
+                </div>
+            </div>
+            <div id="outcome" class="outcome" role="status" hidden></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">4</span>Report</h2></header>
+            <p class="hint" id="report-hint"></p>
+            <label for="notes" class="label">Notes for the post-incident review</label>
+            <textarea id="notes" rows="3" placeholder="What would stop this from paging anyone again?"></textarea>
+            <details><summary>Preview <code>incidents/<span id="report-file"></span>.md</code></summary><pre id="preview"></pre></details>
+            <div class="save-row"><button id="save" class="primary" type="button">Save report</button><span id="save-status" role="status"></span></div>
+        </section>
+
+        <section class="card">
+            <header><h2>Learn more</h2></header>
+            <ul id="learn-links" class="links"></ul>
+            <details>
+                <summary>Break it for real in Azure</summary>
+                <p class="hint">In the <a href="https://github.com/matthansen0/azure-sre-agent-sandbox" target="_blank" rel="noopener">Azure SRE Agent sandbox</a> dev container, after <code>azd up</code>. It costs money while it runs, so tear it down with <code>azd down</code>. See <code>docs/azure-lab.md</code>.</p>
+                <pre id="sandbox"></pre>
+            </details>
+        </section>
+    </main>
+</body>
+</html>

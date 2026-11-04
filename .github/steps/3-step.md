@@ -1,35 +1,25 @@
-## Step 3: (replace-me: STEP-NAME)
+## Step 3: Orders fail, but every pod is green
 
-(replace-me: OPTIONAL Brief story or scenario to introduce the step)
+Last page of the shift: **Order placement failure rate > 20%**. This alert comes from Application Insights, and Kubernetes says every pod is `Running` with zero restarts.
 
-### 📖 Theory: (replace-me: Theory title)
+### 📖 Theory: Healthy pods, broken service
 
-<!-- GitHub-styled notifications can be used outside of ordered lists. Available options are: NOTE, IMPORTANT, WARNING, TIP, CAUTION -->
-<!--
-> [!NOTE]
-> (Important note or additional information relevant to this section)
- -->
+A Kubernetes [Service](https://learn.microsoft.com/en-us/azure/aks/concepts-network-services) routes traffic to the pods whose labels match its selector. If the selector and the labels drift apart, the Service has no endpoints. Every pod stays healthy while every request fails.
 
-(replace-me: Optional theory or background information relevant to this step)
+This is where a human reviewer matters most. A restart looks safe and changes nothing. Deleting the Service looks decisive and makes the outage worse.
 
-### ⌨️ Activity: (replace-me: Activity title)
+### ⌨️ Activity: Find where traffic stops
 
-1. (replace-me: First instruction)
-
-   (replace-me: Make sure to properly indent any multiline instructions)
-
-1. (replace-me: Second instruction)
-
-   (replace-me: Optionally reference images from the `.github/images/` directory to support any part of the content)
-
-   <img width="200" alt="descriptive alt text" src="../images/jetpacktocat.png" />
-
-1. (replace-me: Additional instructions as needed)
+1. Open the **Step 3** incident in the SRE console, and ask Copilot to investigate it.
+1. Compare what the Service selects with the labels the pods actually have.
+1. Pick the root cause, have Copilot propose a fix, and approve it only once you can say why it restores the Service's endpoints.
+1. Save the report and ask Copilot to commit `incidents/service-mismatch.md` and push it to main.
+1. Wait about 20 seconds and refresh this issue.
 
 <details>
 <summary>Having trouble? 🤷</summary><br/>
 
-- (replace-me: Troubleshooting tip or hint)
-- (replace-me: Additional troubleshooting tips as needed)
+- Look for `Endpoints: <none>` in the Service description.
+- Pod health alone can't explain this incident. You need the signals that compare the Service with the pods.
 
 </details>

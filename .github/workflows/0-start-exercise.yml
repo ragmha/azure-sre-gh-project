@@ -2,10 +2,9 @@ name: Step 0 # Start Exercise
 
 on:
   workflow_dispatch:
-  # NOTE: Make sure the repository is a template before enabling this trigger.
-  # push:
-  #   branches:
-  #     - main
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -20,10 +19,10 @@ jobs:
     if: |
       !github.event.repository.is_template
     name: Start Exercise
-    uses: skills/exercise-toolkit/.github/workflows/start-exercise.yml@v0.9.1
+    uses: skills/exercise-toolkit/.github/workflows/start-exercise.yml@v0.9.3
     with:
-      exercise-title: "(replace-me: Exercise title)"
-      intro-message: "(replace-me: Brief one line introduction message for the exercise)"
+      exercise-title: "Azure SRE with GitHub Copilot"
+      intro-message: "Work three AKS incidents with GitHub Copilot as your SRE agent, and approve every fix yourself."
 
   post_next_step_content:
     name: Post next step content
@@ -44,7 +43,7 @@ jobs:
         with:
           repository: skills/exercise-toolkit
           path: exercise-toolkit
-          ref: v0.9.1
+          ref: v0.9.3
 
       - name: Create comment - add step content
         uses: GrantBirki/comment@v2.1.1
