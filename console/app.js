@@ -12,6 +12,7 @@ let state = hosted ?? JSON.parse(localStorage.getItem("sre-console") ?? "null") 
 let progress = hosted ? await fetch("../api/progress").then(res => res.json()) : JSON.parse(localStorage.getItem("sre-progress") ?? "{}");
 let timer;
 let pending = null;
+let stateEvents = 0;
 let shownProposal = "";
 let shownCoachPrompt = "";
 
@@ -69,10 +70,13 @@ async function flush() {
 async function act(action) {
     if (hosted) {
         await flush();
+        const seen = stateEvents;
         const response = await fetch("../api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenarioId: scenario().id, ...action }) });
         const next = await response.json();
         if (!response.ok) throw new Error(next.error);
-        state = next;
+        // The host broadcasts every update. If an event arrived mid-request, let the stream win:
+        // this response may be older and would hide newer state, such as a Copilot proposal.
+        if (seen === stateEvents) state = next;
     } else {
         const updated = transitionRun(scenario(), run(), action);
         state = mergeState(state, { runs: { [scenario().id]: updated } });
@@ -293,6 +297,7 @@ $("#notes").addEventListener("input", event => setRun({ notes: event.target.valu
 if (hosted) {
     const events = new EventSource("../events");
     events.addEventListener("state", event => {
+        stateEvents += 1;
         const next = JSON.parse(event.data);
         state = pending ? mergeState(next, pending) : next;
         render();
