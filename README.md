@@ -16,15 +16,17 @@ The default experience is a **local simulation**: its signals, service health, m
 
 ## Start the exercise
 
-### Open the source preview in Copilot App
+### Try it in Copilot App
 
-[![Open preview in GitHub Copilot App](https://img.shields.io/badge/Open%20preview%20in%20Copilot-→-1f883d?style=for-the-badge&logo=github&labelColor=197935)](https://github.com/copilot/app/launch?open=ghapp%3A%2F%2Fsession%2Fnew%3Frepo%3Dragmha%252Fazure-sre-gh-project%26branch%3Dazure-sre-exercise%26mode%3Dinteractive%26prompt%3DOpen%2520the%2520Azure%2520SRE%2520console%2520canvas%2520and%2520coach%2520me%2520through%2520the%2520three%2520incident%2520simulations.%2520Use%2520simulated%2520evidence%2520only.%2520Never%2520approve%2520a%2520mitigation%2520for%2520me%252C%2520run%2520commands%2520against%2520Azure%2520or%2520AKS%252C%2520or%2520deploy%2520resources.%2520Guide%2520me%2520to%2520gather%2520evidence%252C%2520diagnose%252C%2520review%2520the%2520plan%252C%2520make%2520my%2520own%2520approval%2520decision%252C%2520apply%2520the%2520simulated%2520action%252C%2520verify%252C%2520and%2520debrief.)
+[![Open in GitHub Copilot App](https://img.shields.io/badge/Open%20in%20Copilot-→-1f883d?style=for-the-badge&logo=github&labelColor=197935)](https://github.com/copilot/app/launch?open=ghapp%3A%2F%2Fsession%2Fnew%3Frepo%3Dragmha%252Fazure-sre-gh-project%26mode%3Dinteractive%26prompt%3DOpen%2520the%2520Azure%2520SRE%2520console%2520canvas%2520and%2520coach%2520me%2520through%2520the%2520three%2520incident%2520simulations.%2520Use%2520simulated%2520evidence%2520only.%2520Never%2520approve%2520a%2520mitigation%2520for%2520me%252C%2520run%2520commands%2520against%2520Azure%2520or%2520AKS%252C%2520or%2520deploy%2520resources.%2520Guide%2520me%2520to%2520gather%2520evidence%252C%2520diagnose%252C%2520review%2520the%2520plan%252C%2520make%2520my%2520own%2520approval%2520decision%252C%2520apply%2520the%2520simulated%2520action%252C%2520verify%252C%2520and%2520debrief.)
 
-This opens the unmerged `azure-sre-exercise` source branch as a preview. The [Copilot App deep-link launcher](https://docs.github.com/en/copilot/how-tos/github-copilot-app/open-with-deep-links) asks you to confirm starting the session; it does not deploy Azure resources. **Do not save or push graded reports to this source repository.**
+This starts a Copilot App session on this repository with a kickoff prompt that opens the console canvas. The [deep-link launcher](https://docs.github.com/en/copilot/how-tos/github-copilot-app/open-with-deep-links) asks you to confirm before it creates the session, and it does not deploy Azure resources. **Don't push reports to this source repository.** To have GitHub Actions grade your progress, copy the exercise instead.
 
-### Copy Exercise (available after merge to `main`)
+### Copy the exercise to your account
 
-The GitHub template action copies from `main`, which still contains the original starter exercise. **Copy Exercise is not ready yet**; wait until the game implementation is merged to `main`. The source-branch preview above is the working path for now. After the merge, create your own copy and launch Copilot from that repository so your reports are graded there.
+Copying creates your own repository, where the step workflows grade your reports. Give it about 20 seconds to prepare the first lesson, then follow the exercise issue in your copy.
+
+[![Copy Exercise](https://img.shields.io/badge/Copy%20Exercise-%E2%86%92-1f883d?style=for-the-badge&logo=github&labelColor=197935)](https://github.com/new?template_owner=ragmha&template_name=azure-sre-gh-project&owner=%40me&name=skills-azure-sre-with-copilot&description=Exercise:+Azure+SRE+with+GitHub+Copilot&visibility=public)
 
 <details>
 <summary>Having trouble?</summary>
