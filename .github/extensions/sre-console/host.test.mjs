@@ -37,9 +37,9 @@ test("serves only allowlisted files behind the capability token", async t => {
     assert.match(host.token, /^[0-9a-f-]{36}$/);
 });
 
-test("sanitizes UI state and keeps the review gate for the human", async t => {
+test("sanitizes state and routes incident progress through explicit phase actions", async t => {
     const { host, post } = await setup(t);
-    const saved = await (await post("api/state", {
+    const invalid = await post("api/state", {
         scenarioId: "nope",
         approver: "@mona",
         runs: {
@@ -51,27 +51,52 @@ test("sanitizes UI state and keeps the review gate for the human", async t => {
                 notes: "x".repeat(5000),
             },
         },
-    })).json();
+    });
+    assert.equal(invalid.status, 400, "approval and mitigation state cannot be patched directly");
+    const saved = host.update({
+        scenarioId: "nope",
+        approver: "@mona",
+        runs: {
+            "oom-killed": {
+                evidence: ["pod-inventory", "made-up"],
+                rootCause: "guess",
+                proposal: { mitigationId: "rm-rf", by: "copilot" },
+                approved: { mitigationId: "raise-memory-limit", by: "not a handle" },
+                applied: "raise-memory-limit",
+                verification: "passed",
+                notes: "x".repeat(5000),
+            },
+        },
+    });
     const run = saved.runs["oom-killed"];
     assert.equal(saved.scenarioId, "oom-killed");
     assert.deepEqual(run.evidence, ["pod-inventory"]);
     assert.equal(run.rootCause, null);
     assert.equal(run.proposal, null);
     assert.equal(run.approved, null);
+    assert.equal(run.applied, null);
+    assert.equal(run.verification, null);
     assert.equal(run.notes.length, 2000);
-    assert.equal((await post("api/state", "{")).status, 200, "non-object JSON is ignored");
+    assert.equal((await post("api/state", "{")).status, 400, "non-object JSON is rejected");
     assert.equal((await fetch(host.url().replace("console/index.html", "api/state"), { method: "POST", body: "{" })).status, 400);
 
+    const scenario = host.scenarios.find(item => item.id === "oom-killed");
+    for (const signal of scenario.evidence.filter(item => item.required)) host.investigate(signal.id);
+    host.act({ action: "diagnose", rootCause: "memory-limit-too-low" });
     const proposal = host.propose("raise-memory-limit", "Working set hits the 16Mi limit.");
     assert.equal(proposal.status, "pending_approval");
-    const patched = await (await post("api/state", { runs: { "oom-killed": { rootCause: "memory-limit-too-low" } } })).json();
-    assert.equal(patched.runs["oom-killed"].proposal.mitigationId, "raise-memory-limit", "UI patches keep Copilot's proposal");
-    assert.deepEqual(patched.runs["oom-killed"].evidence, ["pod-inventory"]);
+    assert.equal(host.state.runs["oom-killed"].proposal.mitigationId, "raise-memory-limit");
+    assert.deepEqual(host.state.runs["oom-killed"].evidence, scenario.evidence.filter(item => item.required).map(item => item.id));
     assert.equal(host.state.runs["oom-killed"].proposal.by, "copilot");
     assert.equal(host.state.runs["oom-killed"].approved, null, "proposing never approves");
-    assert.throws(() => host.propose("rm-rf", ""), TypeError);
+    assert.throws(() => host.propose("rm-rf", ""), /Unknown mitigation/);
+    assert.throws(() => host.act({ action: "apply" }), /approve/);
     assert.throws(() => host.select("nope"), TypeError);
     assert.throws(() => host.investigate("nope"), TypeError);
+    const activeScenario = host.state.scenarioId;
+    assert.throws(() => host.act({ scenarioId: "nope", action: "investigate", evidenceId: "pod-inventory" }), /Unknown scenario/);
+    assert.equal(host.state.scenarioId, activeScenario, "an unknown explicit scenario never falls back to the active incident");
+    assert.equal(host.view().stage, "review");
     assert.equal(inputSchema.additionalProperties, false);
 });
 
@@ -101,26 +126,30 @@ test("agent actions stream to the console and expose no answers", async t => {
 
 test("saves a graded report only for known incidents after approval", async t => {
     const { root, host, post } = await setup(t);
-    assert.equal((await post("api/report", { scenarioId: "oom-killed" })).status, 400, "needs approval");
+    assert.equal((await post("api/report", { scenarioId: "oom-killed" })).status, 400, "needs simulated verification");
     assert.equal((await post("api/report", { scenarioId: "../../escape" })).status, 400);
-    host.update({
-        ...host.state,
-        runs: {
-            ...host.state.runs,
-            "oom-killed": {
-                evidence: ["pod-inventory", "describe-pod", "memory-usage"],
-                rootCause: "memory-limit-too-low",
-                approved: { mitigationId: "raise-memory-limit", by: "@mona" },
-                notes: "Set limits from observed working set.",
-            },
-        },
-    });
+    const scenario = host.scenarios.find(item => item.id === "oom-killed");
+    for (const signal of scenario.evidence.filter(item => item.required)) host.investigate(signal.id);
+    host.act({ action: "diagnose", rootCause: "memory-limit-too-low" });
+    assert.equal(host.view().stage, "propose");
+    host.propose("raise-memory-limit", "Working set reaches its configured limit.");
+    assert.equal(host.view().stage, "review");
+    host.act({ action: "review-plan", confirm: true });
+    assert.equal(host.view().stage, "approval");
+    host.act({ action: "approve", approvedBy: "@mona" });
+    assert.equal(host.view().stage, "apply");
+    await assert.rejects(host.saveReport("oom-killed"), /Verify a successful/);
+    host.act({ action: "apply" });
+    assert.equal(host.view().stage, "verify");
+    host.act({ action: "verify" });
     assert.equal(host.view().resolved, true);
-    assert.throws(() => host.propose("restart-pods", ""), /already mitigated/);
+    assert.equal(host.view().stage, "debrief");
+    assert.throws(() => host.propose("restart-pods", ""), /already verified/);
     const res = await post("api/report", { scenarioId: "oom-killed" });
     assert.equal(res.status, 200);
     assert.equal((await res.json()).path, "incidents/oom-killed.md");
     assert.match(await readFile(join(root, "incidents/oom-killed.md"), "utf8"), /Approved by:\*\* @mona/);
+    assert.match(await readFile(join(root, "incidents/oom-killed.md"), "utf8"), /Verification \(simulation only\)/);
     const progress = await host.progress();
     assert.deepEqual(progress["oom-killed"], { saved: true, passed: true });
     assert.deepEqual(progress["mongodb-down"], { saved: false, passed: false });

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { gradeReport, HANDLE, mergeState, renderReport } from "../../../lab/report.mjs";
+import { gradeReport, HANDLE, mergeState, renderReport, transitionRun } from "../../../lab/report.mjs";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json" };
 const FILES = ["console/index.html", "console/app.js", "console/styles.css", "lab/scenarios.json", "lab/report.mjs"];
@@ -14,7 +14,9 @@ export const inputSchema = {
     additionalProperties: false,
 };
 
-export const resolved = (scenario, run) => Boolean(scenario.mitigations.find(item => item.id === run.approved?.mitigationId)?.correct);
+export const resolved = (scenario, run) => Boolean(run.verification === "passed" &&
+    run.applied === run.approved?.mitigationId &&
+    scenario.mitigations.find(item => item.id === run.approved?.mitigationId)?.correct);
 
 export async function createConsoleHost(root) {
     const { scenarios } = JSON.parse(await readFile(join(root, "lab/scenarios.json"), "utf8"));
@@ -41,11 +43,18 @@ export async function createConsoleHost(root) {
                 mitigationId: run.approved.mitigationId,
                 by: run.approved.by,
             };
+            const reviewedPlan = run.reviewedPlan === true && Boolean(proposal || approved);
+            const applied = approved && run.applied === approved.mitigationId ? approved.mitigationId : null;
+            const fix = scenario.mitigations.find(item => item.id === applied);
+            const verification = fix && run.verification === (fix.correct ? "passed" : "failed") ? run.verification : null;
             runs[scenario.id] = {
                 evidence,
                 rootCause: scenario.rootCauses.find(item => item.id === run.rootCause)?.id ?? null,
                 proposal: proposal || null,
+                reviewedPlan,
                 approved: approved || null,
+                applied,
+                verification,
                 notes: text(run.notes, 2000),
             };
         }
@@ -75,13 +84,14 @@ export async function createConsoleHost(root) {
         const scenario = byId.get(scenarioId);
         if (!scenario) throw new TypeError(`Unknown scenario "${scenarioId}".`);
         const run = state.runs[scenarioId];
-        if (!run.approved) throw new TypeError("Approve a mitigation before saving the report.");
+        if (!resolved(scenario, run)) throw new TypeError("Verify a successful simulated recovery before saving the report.");
         const markdown = renderReport(scenario, {
             evidence: run.evidence,
             rootCause: run.rootCause,
             mitigation: run.approved.mitigationId,
             approvedBy: run.approved.by,
             notes: run.notes,
+            verified: true,
         });
         const path = `incidents/${scenario.id}.md`;
         await mkdir(join(root, "incidents"), { recursive: true });
@@ -121,8 +131,14 @@ export async function createConsoleHost(root) {
         if (key === "GET api/state") return send(res, 200, state);
         if (key === "POST api/state") {
             const patch = await body(req);
-            return send(res, 200, update(patch && typeof patch === "object" && !Array.isArray(patch) ? mergeState(state, patch) : state));
+            if (!patch || typeof patch !== "object" || Array.isArray(patch) ||
+                Object.keys(patch).some(key => !["scenarioId", "approver", "runs"].includes(key)) ||
+                Object.entries(patch.runs ?? {}).some(([id, run]) => !byId.has(id) || Object.keys(run ?? {}).some(key => key !== "notes"))) {
+                throw new TypeError("Only incident selection, approver and debrief notes can be edited directly.");
+            }
+            return send(res, 200, update(mergeState(state, patch)));
         }
+        if (key === "POST api/action") return send(res, 200, act(await body(req)));
         if (key === "GET api/progress") return send(res, 200, await progress());
         if (key === "POST api/report") return send(res, 200, await saveReport((await body(req)).scenarioId));
         if (key === "GET events") {
@@ -156,6 +172,9 @@ export async function createConsoleHost(root) {
         const scenario = byId.get(state.scenarioId);
         const run = state.runs[scenario.id];
         const fixed = resolved(scenario, run);
+        const stage = !run.rootCause ? "diagnose" : run.proposal ? !run.reviewedPlan ? "review" : "approval"
+            : !run.approved ? "propose" : !run.applied ? "apply" : !run.verification ? "verify"
+                : run.verification === "failed" ? "retry" : "debrief";
         return {
             scenario: { id: scenario.id, step: scenario.step, title: scenario.title, alert: scenario.alert },
             health: fixed ? "All services healthy" : scenario.health,
@@ -166,7 +185,11 @@ export async function createConsoleHost(root) {
             mitigations: scenario.mitigations.map(({ id, label, command, risk }) => ({ id, label, command, risk })),
             proposal: run.proposal,
             approved: run.approved,
+            reviewedPlan: run.reviewedPlan,
+            applied: run.applied,
+            verification: run.verification,
             resolved: fixed,
+            stage,
         };
     }
 
@@ -174,6 +197,17 @@ export async function createConsoleHost(root) {
         if (!byId.has(scenarioId)) throw new TypeError(`Unknown scenario "${scenarioId}". Use one of: ${[...byId.keys()].join(", ")}.`);
         update({ ...state, scenarioId });
         return view();
+    }
+
+    function act(input) {
+        if (input?.scenarioId !== undefined && !byId.has(input.scenarioId)) {
+            throw new TypeError(`Unknown scenario "${input.scenarioId}". Use one of: ${[...byId.keys()].join(", ")}.`);
+        }
+        const scenarioId = input?.scenarioId ?? state.scenarioId;
+        const scenario = byId.get(scenarioId);
+        const nextRun = transitionRun(scenario, state.runs[scenarioId], input);
+        update(mergeState(state, { runs: { [scenarioId]: nextRun } }));
+        return state;
     }
 
     const host = {
@@ -185,6 +219,7 @@ export async function createConsoleHost(root) {
         saveReport,
         view,
         select,
+        act,
         url() {
             return `http://127.0.0.1:${server.address().port}/${token}/console/index.html`;
         },
@@ -206,19 +241,14 @@ export async function createConsoleHost(root) {
             const scenario = byId.get(state.scenarioId);
             const item = scenario.evidence.find(entry => entry.id === evidenceId);
             if (!item) throw new TypeError(`Unknown signal "${evidenceId}". Use one of: ${scenario.evidence.map(entry => entry.id).join(", ")}.`);
-            const run = state.runs[scenario.id];
-            update({ ...state, runs: { ...state.runs, [scenario.id]: { ...run, evidence: [...run.evidence, item.id] } } });
+            act({ scenarioId: scenario.id, action: "investigate", evidenceId });
             const { id, title, tool, query, output, finding } = item;
             return { id, title, tool, query, output, finding };
         },
         propose(mitigationId, rationale) {
             const scenario = byId.get(state.scenarioId);
-            const run = state.runs[scenario.id];
-            if (!scenario.mitigations.some(item => item.id === mitigationId)) {
-                throw new TypeError(`Unknown mitigation "${mitigationId}". Use one of: ${scenario.mitigations.map(item => item.id).join(", ")}.`);
-            }
-            if (resolved(scenario, run)) throw new TypeError("This incident is already mitigated.");
-            update({ ...state, runs: { ...state.runs, [scenario.id]: { ...run, proposal: { mitigationId, rationale, by: "copilot" } } } });
+            if (resolved(scenario, state.runs[scenario.id])) throw new TypeError("This incident is already verified.");
+            act({ scenarioId: scenario.id, action: "propose", mitigationId, rationale, by: "copilot" });
             return { status: "pending_approval", message: "Proposal shown in the SRE console. A human must Approve or Deny it there (Review mode)." };
         },
     };

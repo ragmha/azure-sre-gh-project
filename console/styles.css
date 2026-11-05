@@ -88,7 +88,16 @@ textarea { width: 100%; resize: vertical; margin: 6px 0 12px; }
 .brand div { display: flex; flex-direction: column; color: var(--fg); line-height: 1.3; }
 .brand span { font-size: 12px; }
 
-.tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; padding: 12px 16px 0; }
+.shift-bar, .queue-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.shift-bar { padding: 14px 16px 8px; }
+#shift-heading { margin: 0 0 3px; font-size: 18px; line-height: 1.3; }
+#shift-summary, #queue-status { font-size: 12px; }
+#shift-progress { width: min(200px, 32vw); accent-color: var(--green); }
+.queue-heading { padding: 8px 16px 0; }
+.queue-heading h2 { font-size: 14px; }
+.shift-win { display: flex; gap: 10px; align-items: center; margin: 12px 16px 0; padding: 12px 14px; border: 1px solid var(--green); border-radius: 6px; background: color-mix(in srgb, var(--green) 8%, var(--bg)); }
+.shift-win strong { color: var(--green); }
+.tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 8px; padding: 12px 16px 0; }
 .tab { display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px 10px; background: transparent; }
 .tab small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .tab[aria-current="page"] { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
@@ -96,7 +105,22 @@ textarea { width: 100%; resize: vertical; margin: 6px 0 12px; }
 .tab.saved .mark { color: var(--orange); border-color: var(--orange); }
 .tab.passed .mark { color: #ffffff; background: var(--green); border-color: var(--green); }
 
-main { display: grid; gap: 12px; padding: 12px 16px 24px; max-width: 920px; }
+main { display: grid; gap: 12px; padding: 12px 16px 24px; max-width: 920px; margin: 0 auto; }
+.stage-card { padding: 10px 0 12px; border-bottom: 1px solid var(--border); }
+#stage-track { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+#stage-track li { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; }
+#stage-track li > span { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: 50%; font-size: 11px; }
+#stage-track li.complete { color: var(--green); }
+#stage-track li.complete > span { color: var(--bg); background: var(--green); border-color: var(--green); }
+#stage-track li[aria-current="step"] { color: var(--fg); font-weight: 600; }
+#stage-track li[aria-current="step"] > span { border-color: var(--blue); color: var(--blue); }
+#stage-track li.failed { color: var(--orange); }
+#stage-track li.failed > span { border-color: var(--orange); }
+.coach { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--border); }
+.coach > div { flex: 1; min-width: 0; }
+.coach h2 { margin-bottom: 4px; font-size: 13px; }
+.coach p { max-width: 70ch; color: var(--muted); font-size: 12px; }
+#coach-status { color: var(--green); font-size: 12px; }
 .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
 .card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .n { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--fg); color: var(--bg); font-size: 12px; }
@@ -153,6 +177,10 @@ main { display: grid; gap: 12px; padding: 12px 16px 24px; max-width: 920px; }
 .fix.applied { border-color: var(--green); }
 
 .proposal { display: grid; gap: 8px; margin-top: 12px; padding: 14px; border: 1px solid var(--orange); border-radius: var(--radius); background: color-mix(in srgb, var(--orange) 6%, var(--bg)); scroll-margin: 12px; }
+.review-plan { display: flex; gap: 8px; align-items: flex-start; }
+.review-plan input { margin-top: 4px; accent-color: var(--blue); }
+.apply-panel { display: grid; justify-items: start; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.apply-panel p { max-width: 70ch; color: var(--muted); font-size: 12px; }
 .proposal-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
 .risk { color: var(--muted); font-size: 12px; }
 .approve-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -161,6 +189,11 @@ main { display: grid; gap: 12px; padding: 12px 16px 24px; max-width: 920px; }
 .outcome.ok { border-color: var(--green); background: color-mix(in srgb, var(--green) 8%, var(--bg)); }
 .outcome.warn { border-color: var(--orange); background: color-mix(in srgb, var(--orange) 8%, var(--bg)); }
 .outcome button { margin-top: 8px; display: block; }
+.verification { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; }
+.verification.ok { border-color: var(--green); background: color-mix(in srgb, var(--green) 8%, var(--bg)); }
+.verification.warn { border-color: var(--orange); background: color-mix(in srgb, var(--orange) 8%, var(--bg)); }
+.verification p { margin: 4px 0; }
+.verification small { color: var(--muted); }
 
 .label { font-weight: var(--font-weight-semibold, 600); font-size: 12px; }
 details { margin-top: 4px; }
@@ -170,3 +203,16 @@ summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
 .save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
 #save-status { color: var(--muted); }
 .links { margin: 0 0 8px; padding-left: 18px; display: grid; gap: 4px; }
+
+@media (max-width: 520px) {
+    .topbar { flex-wrap: wrap; }
+    .shift-bar { align-items: flex-start; flex-direction: column; gap: 8px; }
+    #shift-progress { width: 100%; }
+    .queue-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
+    .tabs { grid-template-columns: 1fr; }
+    main { padding-inline: 12px; }
+    .topbar { padding-inline: 12px; }
+    .coach { align-items: flex-start; flex-direction: column; }
+    #stage-track { gap: 3px; }
+    #stage-track li { align-items: flex-start; flex-direction: column; gap: 3px; font-size: 10px; line-height: 1.2; }
+}

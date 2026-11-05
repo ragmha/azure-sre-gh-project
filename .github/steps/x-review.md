@@ -1,19 +1,19 @@
-## Review
+## Shift debrief
 
-_Congratulations, you've worked three AKS incidents with GitHub Copilot as your SRE agent, and approved every fix yourself._
+_Congratulations, you completed three simulated AKS incidents with GitHub Copilot coaching you through the response loop._
 
 <img src="https://octodex.github.com/images/jetpacktocat.png" alt="celebrate" width=200 align=right>
 
 Here's a recap of your accomplishments:
 
-- Investigated incidents with the signals Azure SRE Agent uses: KQL over Container insights, plus `kubectl`.
+- Collected seeded KQL and `kubectl` evidence samples. The console did not query Azure or invoke the Azure SRE Agent service.
 - Diagnosed an OOMKilled container, a failed downstream dependency, and a Service selector mismatch.
-- Kept a human in the loop. Copilot proposed each mitigation, and you reviewed it before it ran.
-- Wrote post-incident reports in `incidents/` that CI checked with GitHub Actions.
+- Kept a human approval gate: you reviewed each plan and approved it yourself before applying its simulated outcome.
+- Verified each simulated recovery separately, then wrote debriefs checked by the shared report grader. GitHub Actions records progress after reports are committed in your copied repository.
 
 ### What's next?
 
-- **Break it for real.** Follow [docs/azure-lab.md](../blob/main/docs/azure-lab.md) to deploy the same pets store to AKS with the [Azure SRE Agent sandbox](https://github.com/matthansen0/azure-sre-agent-sandbox), then run `break-oom`, `break-mongodb`, and `break-service` against a real cluster. It costs money while it runs, so tear it down with `scripts/destroy.ps1` when you're done.
-- **Choose a run mode on purpose.** Read [Run modes in Azure SRE Agent](https://learn.microsoft.com/en-us/azure/sre-agent/run-modes) and decide which of today's fixes you would ever let run autonomously.
+- **Optional executable lab.** The separate [Azure Container Apps lab](https://github.com/{{ full_repo_name }}/blob/main/azure/README.md) has its own provisioning, three configuration incidents, verification, scoped teardown, permissions, quotas, and cost guidance. It is not the simulated AKS pets store and is billable.
+- **Try the real Azure SRE Agent separately.** Read [Run modes](https://learn.microsoft.com/en-us/azure/sre-agent/run-modes), [permissions](https://learn.microsoft.com/en-us/azure/sre-agent/permissions), and the [enterprise trial notes](https://github.com/{{ full_repo_name }}/blob/main/azure/README.md#optional-evaluate-the-actual-azure-sre-agent). Review the distinct identity, RBAC, approval, data, and billing decisions before any live trial.
 - **Go deeper on AKS.** [Troubleshoot OOMKilled in AKS](https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/availability-performance/troubleshoot-oomkilled-aks-clusters) and [Resource management best practices](https://learn.microsoft.com/en-us/azure/aks/developer-best-practices-resource-management).
-- **Read the docs.** Start with the [Azure SRE Agent overview](https://learn.microsoft.com/en-us/azure/sre-agent/overview), then [incident response](https://learn.microsoft.com/en-us/azure/sre-agent/incident-response).
+- **Read the docs.** Start with the [Azure SRE Agent overview](https://learn.microsoft.com/en-us/azure/sre-agent/overview), then [incident response](https://learn.microsoft.com/en-us/azure/sre-agent/incident-response) and [AKS service connectivity](https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/troubleshoot-connection-pods-services-same-cluster).

@@ -215,10 +215,11 @@
           "outcome": "You deleted 412 customer orders and makeline-service is still down. Never destroy data to quiet an alert."
         }
       ],
-      "lesson": "Follow the dependency chain before you act. The loudest service is often a victim of something further down.",
+      "lesson": "Follow the dependency chain before you act. The loudest service is often a victim of something further down. This is a generic Kubernetes dependency failure illustrated with MongoDB; Microsoft Learn documents MongoDB high-availability patterns, not this exact scale-to-zero outage.",
       "learn": [
         { "title": "Azure SRE Agent incident response", "url": "https://learn.microsoft.com/en-us/azure/sre-agent/incident-response" },
-        { "title": "Query logs from Container insights", "url": "https://learn.microsoft.com/en-us/azure/azure-monitor/containers/container-insights-log-query" }
+        { "title": "MongoDB high availability on AKS", "url": "https://learn.microsoft.com/en-us/azure/aks/mongodb-overview" },
+        { "title": "Troubleshoot AKS service connectivity", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/troubleshoot-connection-pods-services-same-cluster" }
       ],
       "sandbox": { "command": "break-mongodb", "manifest": "k8s/scenarios/mongodb-down.yaml" }
     },
@@ -254,11 +255,11 @@
         },
         {
           "id": "describe-service",
-          "title": "order-service Service",
+          "title": "Service selector and EndpointSlice",
           "tool": "kubectl",
-          "query": "kubectl describe service order-service -n pets",
-          "output": "Name:         order-service\nNamespace:    pets\nSelector:     app=order-service-v2\nType:         ClusterIP\nPort:         <unset>  3000/TCP\nTargetPort:   3000/TCP\nEndpoints:    <none>",
-          "finding": "The Service has no endpoints, and it selects app=order-service-v2.",
+          "query": "kubectl get service order-service -n pets -o jsonpath='{.spec.selector}{\"\\n\"}'\nkubectl get endpointslice -n pets --selector kubernetes.io/service-name=order-service",
+          "output": "{\"app\":\"order-service-v2\"}\nNAME                         ADDRESSTYPE   PORTS   ENDPOINTS   AGE\norder-service-7xk2p          IPv4          3000    <none>       30m",
+          "finding": "The selector is app=order-service-v2, and the EndpointSlice has no endpoints. Compare the selector with pod labels before changing the Service.",
           "required": true
         },
         {
@@ -321,6 +322,8 @@
       "lesson": "Healthy pods don't guarantee a healthy service. When pods are fine but traffic fails, compare Service selectors with pod labels and check endpoints.",
       "learn": [
         { "title": "Network concepts for applications in AKS", "url": "https://learn.microsoft.com/en-us/azure/aks/concepts-network-services" },
+        { "title": "Troubleshoot AKS service and EndpointSlice connectivity", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/connection-issues-application-hosted-aks-cluster" },
+        { "title": "Validate pod and service connectivity in an AKS cluster", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/troubleshoot-connection-pods-services-same-cluster" },
         { "title": "Azure SRE Agent run modes", "url": "https://learn.microsoft.com/en-us/azure/sre-agent/run-modes" }
       ],
       "sandbox": { "command": "break-service", "manifest": "k8s/scenarios/service-mismatch.yaml" }

@@ -18,7 +18,7 @@ const session = await joinSession({
         createCanvas({
             id: "sre-console",
             displayName: "Azure SRE console",
-            description: "Work Azure SRE incidents on a simulated AKS pets store: investigate signals, find the root cause, and get a human to approve the fix.",
+            description: "A simulation-only incident-response game for an AKS pets store. GitHub Copilot coaches the learner; it is not the Azure SRE Agent service or live telemetry.",
             inputSchema,
             actions: [
                 {
@@ -34,7 +34,7 @@ const session = await joinSession({
                 },
                 {
                     name: "investigate",
-                    description: "Run one diagnostic signal (a KQL query or kubectl command) the way Azure SRE Agent would. The result appears in the console and is returned to you.",
+                    description: "Reveal one seeded KQL or kubectl evidence sample for the simulated AKS incident. It is not a live query and does not invoke Azure SRE Agent.",
                     inputSchema: { type: "object", properties: { evidenceId: { type: "string" } }, required: ["evidenceId"], additionalProperties: false },
                     handler: guard(input => host.investigate(input.evidenceId)),
                 },
@@ -51,7 +51,7 @@ const session = await joinSession({
                 },
                 {
                     name: "get_progress",
-                    description: "Check which incident reports are saved in incidents/ and whether they pass the exercise checks.",
+                    description: "Check which incident reports are saved in incidents/ and whether they pass the shared local report checks.",
                     handler: guard(() => host.progress()),
                 },
             ],

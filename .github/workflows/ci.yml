@@ -25,6 +25,11 @@ jobs:
         with:
           node-version: 24
 
+      - name: Check offline Azure lab
+        run: |
+          bash -n azure/lab.sh azure/test.sh
+          bash azure/test.sh
+
       - name: Run tests
         run: node --test 'lab/*.test.mjs' '.github/extensions/sre-console/*.test.mjs'
 

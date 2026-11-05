@@ -50,6 +50,9 @@ test("extension wires the canvas, actions and cleanup without an approve action"
     assert.equal((await fetch(opened.url)).status, 200);
     await assert.rejects(canvas.open({ instanceId: "sre-2", input: { scenario: "nope" } }), error => error.code === "canvas_input_invalid");
     await assert.rejects(actions.investigate.handler({ input: { evidenceId: "nope" } }), error => error.code === "sre_console_invalid");
+    const scenario = hosts[0].scenarios.find(item => item.id === "oom-killed");
+    for (const signal of scenario.evidence.filter(item => item.required)) hosts[0].investigate(signal.id);
+    hosts[0].act({ action: "diagnose", rootCause: "memory-limit-too-low" });
     assert.equal((await actions.investigate.handler({ input: { evidenceId: "pod-inventory" } })).id, "pod-inventory");
     assert.equal((await actions.propose_mitigation.handler({ input: { mitigationId: "scale-out", rationale: "More pods." } })).status, "pending_approval");
     const state = await actions.get_state.handler({});
