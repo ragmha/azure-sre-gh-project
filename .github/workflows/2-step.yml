@@ -74,11 +74,12 @@ jobs:
       - name: Disable current workflow and enable next one
         run: |
           gh workflow disable "${{github.workflow}}"
-          gh workflow enable "Step 3"
+          # Enabling through the API is idempotent; `gh workflow enable` fails if Step 3 is already active.
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/3-last-step.yml/enable"
           # A report pushed while Step 3 was disabled never triggered it, so grade it now.
           # ponytail: a push landing between enable and this check runs Step 3 twice (duplicate comments only).
           if gh api "repos/$GITHUB_REPOSITORY/contents/incidents/service-mismatch.md" --silent 2>/dev/null; then
-            gh workflow run "Step 3"
+            gh workflow run 3-last-step.yml
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

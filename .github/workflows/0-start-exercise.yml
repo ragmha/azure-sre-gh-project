@@ -62,8 +62,15 @@ jobs:
           issue-number: ${{ env.ISSUE_NUMBER }}
           file: exercise-toolkit/markdown-templates/step-feedback/watching-for-progress.md
 
-      - name: Enable next step workflow
+      - name: Set step workflow states
         run: |
-          gh workflow enable "Step 1"
+          # The toolkit's disable step can run before a new copy has registered its workflows
+          # (HTTP 404, ignored), which leaves Steps 2 and 3 active. Set every step's state here.
+          api() { for _ in 1 2 3 4 5 6; do gh api "$@" && return; sleep 5; done; return 1; }
+          for wf in 2-step.yml 3-last-step.yml; do
+            state=$(api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf" --jq .state)
+            if [ "$state" = active ]; then api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/disable"; fi
+          done
+          api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/1-step.yml/enable"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
