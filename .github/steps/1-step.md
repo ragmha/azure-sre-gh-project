@@ -39,7 +39,7 @@ From the repository root, in a Codespace or on your machine, run:
 python3 -m http.server 8000 --bind 127.0.0.1
 ```
 
-Open `http://localhost:8000/console/`. You run every step yourself, and **Download report** replaces **Save to incidents/**. Upload the file to `incidents/` on `main` with **Add file → Upload files**.
+Open `http://localhost:8000/console/`. You run every step yourself, and **Download debrief** replaces **Save debrief to incidents/**. Upload the file to `incidents/` on `main` with **Add file → Upload files**.
 
 </details>
 
@@ -70,5 +70,6 @@ Open `http://localhost:8000/console/`. You run every step yourself, and **Downlo
 - Diagnose stays locked until all required signal samples are revealed. A new signal or changed diagnosis clears the previous plan and approval.
 - Restarting or scaling out doesn't help a pod that is killed for exceeding its memory limit. Look at the exit code and the memory chart.
 - If a check fails, fix the incident in the console, save again, and push the updated report.
+- Pushed a later incident's report early? Each step grades it as soon as the previous step passes. To rerun a check yourself, open the **Actions** tab, select the step's workflow, and choose **Run workflow**.
 
 </details>

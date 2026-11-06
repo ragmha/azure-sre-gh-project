@@ -116,8 +116,7 @@
       "learn": [
         { "title": "Troubleshoot OOMKilled in AKS", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/availability-performance/troubleshoot-oomkilled-aks-clusters" },
         { "title": "Resource management best practices for AKS", "url": "https://learn.microsoft.com/en-us/azure/aks/developer-best-practices-resource-management" }
-      ],
-      "sandbox": { "command": "break-oom", "manifest": "k8s/scenarios/oom-killed.yaml" }
+      ]
     },
     {
       "id": "mongodb-down",
@@ -220,8 +219,7 @@
         { "title": "Azure SRE Agent incident response", "url": "https://learn.microsoft.com/en-us/azure/sre-agent/incident-response" },
         { "title": "MongoDB high availability on AKS", "url": "https://learn.microsoft.com/en-us/azure/aks/mongodb-overview" },
         { "title": "Troubleshoot AKS service connectivity", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/troubleshoot-connection-pods-services-same-cluster" }
-      ],
-      "sandbox": { "command": "break-mongodb", "manifest": "k8s/scenarios/mongodb-down.yaml" }
+      ]
     },
     {
       "id": "service-mismatch",
@@ -325,8 +323,7 @@
         { "title": "Troubleshoot AKS service and EndpointSlice connectivity", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/connection-issues-application-hosted-aks-cluster" },
         { "title": "Validate pod and service connectivity in an AKS cluster", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/troubleshoot-connection-pods-services-same-cluster" },
         { "title": "Azure SRE Agent run modes", "url": "https://learn.microsoft.com/en-us/azure/sre-agent/run-modes" }
-      ],
-      "sandbox": { "command": "break-service", "manifest": "k8s/scenarios/service-mismatch.yaml" }
+      ]
     }
   ]
 }

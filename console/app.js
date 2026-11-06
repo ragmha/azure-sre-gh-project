@@ -229,7 +229,6 @@ function render() {
     $("#save").textContent = hosted ? "Save debrief to incidents/" : "Download debrief";
 
     $("#learn-links").innerHTML = s.learn.map(item => `<li><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></li>`).join("");
-    $("#sandbox").textContent = `${s.sandbox.command}   # kubectl apply -f ${s.sandbox.manifest}\nfix-all     # restore the healthy baseline`;
 }
 
 async function save() {
