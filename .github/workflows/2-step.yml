@@ -1,6 +1,7 @@
 name: Step 2
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -74,5 +75,10 @@ jobs:
         run: |
           gh workflow disable "${{github.workflow}}"
           gh workflow enable "Step 3"
+          # A report pushed while Step 3 was disabled never triggered it, so grade it now.
+          # ponytail: a push landing between enable and this check runs Step 3 twice (duplicate comments only).
+          if gh api "repos/$GITHUB_REPOSITORY/contents/incidents/service-mismatch.md" --silent 2>/dev/null; then
+            gh workflow run "Step 3"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

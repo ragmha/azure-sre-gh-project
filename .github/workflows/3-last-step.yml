@@ -1,6 +1,7 @@
 name: Step 3 # Last step of the exercise
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
