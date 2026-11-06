@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Exercise copies don't need maintainer CI.
+    if: github.event.repository.is_template
+    name: Test lab and console host
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Check offline Azure lab
+        run: |
+          bash -n azure/lab.sh azure/test.sh
+          bash azure/test.sh
+
+      - name: Run tests
+        run: node --test 'lab/*.test.mjs' '.github/extensions/sre-console/*.test.mjs'
+
+      - name: Grader rejects a missing report
+        run: |
+          if node lab/check.mjs oom-killed; then
+            echo "Expected the grader to fail without incidents/oom-killed.md" >&2
+            exit 1
+          fi

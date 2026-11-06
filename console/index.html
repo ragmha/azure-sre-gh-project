@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Azure SRE console</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 12h3l1.5-3 3 6 1.5-3h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div><strong>Azure SRE console</strong><span id="app-name" class="muted"></span></div>
+        </div>
+        <span class="chip mode" title="Training simulation inspired by Review; this is not a live Azure SRE Agent run.">Simulation · approval required</span>
+    </header>
+    <section class="shift-bar" aria-labelledby="shift-heading">
+        <div><h1 id="shift-heading">Your on-call shift</h1><p id="shift-summary" class="muted"></p></div>
+        <progress id="shift-progress" max="3" value="0" aria-label="Incident debriefs passing the report checks"></progress>
+    </section>
+    <section id="shift-win" class="shift-win" role="status" hidden></section>
+    <div class="queue-heading"><h2>Incident queue</h2><span id="queue-status" class="muted"></span></div>
+    <nav id="tabs" class="tabs" aria-label="Incidents"></nav>
+    <main>
+        <section id="alert" class="alert" aria-live="polite"></section>
+        <section class="stage-card" aria-label="Current incident stages">
+            <ol id="stage-track"></ol>
+            <div class="coach">
+                <div><h2>Copilot coach</h2><p id="coach-prompt"></p></div>
+                <button id="copy-coach" type="button">Copy prompt</button>
+                <span id="coach-status" role="status"></span>
+            </div>
+        </section>
+
+        <section class="card">
+            <header><h2>Service map</h2><span class="legend"><i class="healthy"></i>healthy <i class="degraded"></i>degraded <i class="down"></i>down</span></header>
+            <div id="topology" class="topology"></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">1</span>Investigate</h2><span id="signal-count" class="muted"></span></header>
+            <p class="hint" id="investigate-hint">Choose seeded signals modeled on incident investigation. They are not live Azure or AKS telemetry.</p>
+            <div id="signals" class="signals"></div>
+            <div id="evidence" class="evidence-list"></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">2</span>Diagnose</h2></header>
+            <p class="hint" id="diagnose-hint"></p>
+            <div id="causes" class="options" role="radiogroup" aria-label="Root cause"></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">3</span>Review plan and mitigate</h2></header>
+            <p class="hint" id="mitigate-hint"></p>
+            <div id="fixes" class="options"></div>
+            <div id="proposal" class="proposal" hidden>
+                <div class="proposal-head"><span id="proposal-status" class="chip pending">Plan awaiting your review</span><span id="proposal-by" class="muted"></span></div>
+                <h3 id="proposal-title"></h3>
+                <p id="proposal-rationale"></p>
+                <pre><code id="proposal-command"></code></pre>
+                <p id="proposal-risk" class="risk"></p>
+                <p id="proposal-outcome" class="hint"></p>
+                <label class="review-plan"><input id="review-plan" type="checkbox"> I reviewed the command, blast radius and expected verification.</label>
+                <div class="approve-row">
+                    <label for="approver">Approver</label>
+                    <input id="approver" placeholder="@your-github-handle" autocomplete="off" spellcheck="false" maxlength="40">
+                    <button id="approve" class="primary" type="button">Approve plan</button>
+                    <button id="deny" type="button">Deny</button>
+                </div>
+            </div>
+            <div id="apply-panel" class="apply-panel" hidden>
+                <p>Approval records your decision. This next action changes the simulation only; it never runs the displayed command against AKS.</p>
+                <button id="apply" class="primary" type="button">Apply in simulation</button>
+            </div>
+            <div id="outcome" class="outcome" role="status" hidden></div>
+        </section>
+
+        <section class="card" id="verification-card">
+            <header><h2><span class="n">4</span>Verify recovery</h2></header>
+            <p class="hint" id="verify-hint">Apply an approved mitigation in the simulation first.</p>
+            <button id="verify" class="primary" type="button" disabled>Run simulated verification</button>
+            <div id="verification" class="verification" role="status" hidden></div>
+        </section>
+
+        <section class="card">
+            <header><h2><span class="n">5</span>Debrief</h2></header>
+            <p class="hint" id="report-hint"></p>
+            <label for="notes" class="label">Notes for the post-incident review</label>
+            <textarea id="notes" rows="3" placeholder="What would stop this from paging anyone again?"></textarea>
+            <details><summary>Preview <code>incidents/<span id="report-file"></span>.md</code></summary><pre id="preview"></pre></details>
+            <div class="save-row"><button id="save" class="primary" type="button">Save report</button><span id="save-status" role="status"></span></div>
+        </section>
+
+        <section class="card">
+            <header><h2>Learn more</h2></header>
+            <ul id="learn-links" class="links"></ul>
+            <details>
+                <summary>Optional: run the Azure lab</summary>
+                <p class="hint">This console is simulation only and never deploys anything. The separate, billable Azure Container Apps lab is documented in <a href="https://github.com/ragmha/azure-sre-gh-project/blob/main/azure/README.md" target="_blank" rel="noopener"><code>azure/README.md</code></a>.</p>
+            </details>
+        </section>
+    </main>
+</body>
+</html>
