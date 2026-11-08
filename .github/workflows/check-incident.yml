@@ -1,0 +1,74 @@
+# Shared by the step workflows: grade incidents/<scenario>.md and post the results table.
+name: Check incident report
+
+on:
+  workflow_call:
+    inputs:
+      scenario:
+        type: string
+        required: true
+      issue-url:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Grade incident report
+    runs-on: ubuntu-latest
+    env:
+      ISSUE_URL: ${{ inputs.issue-url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Get response templates
+        uses: actions/checkout@v6
+        with:
+          repository: skills/exercise-toolkit
+          path: exercise-toolkit
+          ref: v0.9.3
+
+      - name: Update comment - checking work
+        run: |
+          gh issue comment "$ISSUE_URL" \
+            --body-file exercise-toolkit/markdown-templates/step-feedback/checking-work.md \
+            --edit-last
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Grade report
+        id: grade
+        continue-on-error: true
+        run: node lab/check.mjs "$SCENARIO"
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+
+      - name: Build message - step results
+        id: build-message-step-results
+        uses: skills/action-text-variables@v4
+        with:
+          template-file: exercise-toolkit/markdown-templates/step-feedback/step-results-table.md
+          template-vars: ${{ steps.grade.outputs.vars }}
+
+      - name: Update comment - step results
+        run: |
+          gh issue comment "$ISSUE_URL" \
+            --body "$COMMENT_BODY" \
+            --edit-last
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_BODY: ${{ steps.build-message-step-results.outputs.updated-text }}
+
+      - name: Fail job if not all checks passed
+        if: steps.grade.outcome == 'failure'
+        run: exit 1

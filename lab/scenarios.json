@@ -1,0 +1,329 @@
+{
+  "version": 1,
+  "app": {
+    "name": "Pets store on AKS",
+    "namespace": "pets",
+    "tiers": [
+      { "label": "Edge", "services": ["store-front", "store-admin"] },
+      { "label": "APIs", "services": ["order-service", "product-service", "makeline-service"] },
+      { "label": "Data", "services": ["rabbitmq", "mongodb"] }
+    ],
+    "dependencies": {
+      "store-front": ["order-service", "product-service"],
+      "store-admin": ["order-service", "product-service", "makeline-service"],
+      "order-service": ["rabbitmq"],
+      "makeline-service": ["rabbitmq", "mongodb"]
+    }
+  },
+  "scenarios": [
+    {
+      "id": "oom-killed",
+      "step": 1,
+      "title": "Checkout is crash-looping",
+      "alert": {
+        "name": "order-service pod restarts > 3 in 10m",
+        "severity": "Sev2",
+        "source": "Azure Monitor alert",
+        "summary": "order-service restarted 7 times in 10 minutes. Customers can't check out."
+      },
+      "health": { "store-front": "degraded", "order-service": "down" },
+      "evidence": [
+        {
+          "id": "pod-inventory",
+          "title": "Pod restarts",
+          "tool": "Log Analytics · KubePodInventory",
+          "query": "KubePodInventory\n| where TimeGenerated > ago(30m) and Namespace == \"pets\"\n| where ControllerName startswith \"order-service\"\n| summarize Restarts = max(ContainerRestartCount) by Name, ContainerStatusReason",
+          "output": "Name                            ContainerStatusReason  Restarts\norder-service-7c9d8f6b4-2xkqp   CrashLoopBackOff       7\norder-service-7c9d8f6b4-m8z4w   CrashLoopBackOff       6",
+          "finding": "Both replicas are crash-looping, so this isn't one bad pod or node.",
+          "required": true
+        },
+        {
+          "id": "describe-pod",
+          "title": "Last container state",
+          "tool": "kubectl",
+          "query": "kubectl describe pod -n pets -l app=order-service",
+          "output": "...\n    Last State:     Terminated\n      Reason:       OOMKilled\n      Exit Code:    137\n    Limits:\n      memory:  16Mi\n    Requests:\n      memory:  8Mi\n...",
+          "finding": "Exit code 137 with reason OOMKilled: the kernel killed the container for exceeding its 16Mi memory limit.",
+          "required": true
+        },
+        {
+          "id": "memory-usage",
+          "title": "Container memory",
+          "tool": "Log Analytics · Perf",
+          "query": "Perf\n| where TimeGenerated > ago(30m)\n| where ObjectName == \"K8SContainer\" and CounterName == \"memoryWorkingSetBytes\"\n| where InstanceName endswith \"/order-service\"\n| summarize PeakMiB = max(CounterValue) / 1048576 by bin(TimeGenerated, 5m)",
+          "output": "TimeGenerated   PeakMiB\n09:15           16.0\n09:20           16.0\n09:25           16.0\n09:30           16.0\n09:35           16.0",
+          "finding": "Working set hits the 16Mi limit within seconds of every start. There's no slow climb, so this isn't a leak.",
+          "required": true
+        },
+        {
+          "id": "container-logs",
+          "title": "order-service logs",
+          "tool": "Log Analytics · ContainerLogV2",
+          "query": "ContainerLogV2\n| where PodNamespace == \"pets\" and ContainerName == \"order-service\"\n| project TimeGenerated, LogMessage\n| take 3",
+          "output": "09:41:02  Listening on port 3000\n09:41:02  Connecting to rabbitmq:5672\n09:41:03  Connected to rabbitmq",
+          "finding": "Logs stop with no error. That's typical when a process is killed from outside instead of crashing.",
+          "required": false
+        },
+        {
+          "id": "node-memory",
+          "title": "Node memory",
+          "tool": "kubectl",
+          "query": "kubectl top nodes",
+          "output": "NAME                              CPU%   MEMORY%\naks-userpool-31207415-vmss000000  22%    38%\naks-userpool-31207415-vmss000001  19%    41%",
+          "finding": "Nodes have plenty of free memory, so node pressure isn't evicting pods.",
+          "required": false
+        }
+      ],
+      "rootCauses": [
+        { "id": "memory-limit-too-low", "label": "The container memory limit (16Mi) is far below what order-service needs", "correct": true },
+        { "id": "memory-leak", "label": "A memory leak in a recent order-service build" },
+        { "id": "node-memory-pressure", "label": "Node memory pressure is evicting pods" },
+        { "id": "rabbitmq-unreachable", "label": "order-service can't reach RabbitMQ and exits" }
+      ],
+      "mitigations": [
+        {
+          "id": "raise-memory-limit",
+          "label": "Raise the order-service memory request and limit",
+          "command": "kubectl set resources deployment/order-service -n pets --requests=memory=64Mi --limits=memory=256Mi",
+          "risk": "Recreates order-service pods (brief downtime with the Recreate strategy).",
+          "outcome": "Pods start, working set settles near 48MiB, and restarts stop.",
+          "correct": true
+        },
+        {
+          "id": "reapply-baseline",
+          "label": "Reapply the sandbox baseline manifest",
+          "command": "kubectl apply -f k8s/base/application.yaml",
+          "risk": "Resets every pets workload to its known-good spec.",
+          "outcome": "order-service returns to its baseline limits and stops restarting.",
+          "correct": true
+        },
+        {
+          "id": "restart-pods",
+          "label": "Restart the order-service pods",
+          "command": "kubectl rollout restart deployment/order-service -n pets",
+          "risk": "Recreates order-service pods.",
+          "outcome": "New pods are OOMKilled again within 30 seconds. A restart treats the symptom."
+        },
+        {
+          "id": "scale-out",
+          "label": "Scale order-service to 6 replicas",
+          "command": "kubectl scale deployment/order-service -n pets --replicas=6",
+          "risk": "Adds 4 pods to the user node pool.",
+          "outcome": "Six pods crash-loop instead of two. More replicas don't give each pod more memory."
+        }
+      ],
+      "lesson": "Exit code 137, reason OOMKilled, and a working set pinned at the limit mean the limit is too low. Size requests and limits from observed usage.",
+      "learn": [
+        { "title": "Troubleshoot OOMKilled in AKS", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/availability-performance/troubleshoot-oomkilled-aks-clusters" },
+        { "title": "Resource management best practices for AKS", "url": "https://learn.microsoft.com/en-us/azure/aks/developer-best-practices-resource-management" }
+      ]
+    },
+    {
+      "id": "mongodb-down",
+      "step": 2,
+      "title": "Orders are never fulfilled",
+      "alert": {
+        "name": "makeline-service availability < 50%",
+        "severity": "Sev1",
+        "source": "Azure Monitor alert",
+        "summary": "Customers can place orders, but none has been fulfilled for 15 minutes. makeline-service is failing readiness checks."
+      },
+      "health": { "store-admin": "degraded", "makeline-service": "down", "rabbitmq": "degraded", "mongodb": "down" },
+      "evidence": [
+        {
+          "id": "makeline-logs",
+          "title": "makeline-service errors",
+          "tool": "Log Analytics · ContainerLogV2",
+          "query": "ContainerLogV2\n| where PodNamespace == \"pets\" and ContainerName == \"makeline-service\"\n| where LogMessage has \"mongo\"\n| project TimeGenerated, LogMessage\n| take 3",
+          "output": "09:58:12  failed to connect to mongodb://mongodb:27017: connection refused\n09:58:42  failed to connect to mongodb://mongodb:27017: connection refused\n09:59:12  readiness check failed: database unavailable",
+          "finding": "makeline-service fails because it can't reach MongoDB. It's a victim, not the cause.",
+          "required": true
+        },
+        {
+          "id": "deployments",
+          "title": "Deployment status",
+          "tool": "kubectl",
+          "query": "kubectl get deployments -n pets",
+          "output": "NAME               READY   UP-TO-DATE   AVAILABLE\nmakeline-service   0/1     1            0\nmongodb            0/0     0            0\norder-service      2/2     2            2\nproduct-service    1/1     1            1\nrabbitmq           1/1     1            1\nstore-admin        1/1     1            1\nstore-front        1/1     1            1",
+          "finding": "The mongodb Deployment wants 0 replicas. Nothing crashed it; it was scaled to zero.",
+          "required": true
+        },
+        {
+          "id": "kube-events",
+          "title": "MongoDB events",
+          "tool": "Log Analytics · KubeEvents",
+          "query": "KubeEvents\n| where Namespace == \"pets\" and Name startswith \"mongodb\"\n| project TimeGenerated, Reason, Message",
+          "output": "09:43:05  ScalingReplicaSet  Scaled down replica set mongodb-5d8f7c9b6 to 0 from 1\n09:43:06  Killing            Stopping container mongodb",
+          "finding": "The scale-down event lines up with when fulfilment stopped.",
+          "required": false
+        },
+        {
+          "id": "queue-depth",
+          "title": "Order queue",
+          "tool": "kubectl exec",
+          "query": "kubectl exec -n pets deploy/rabbitmq -- rabbitmqctl list_queues name messages",
+          "output": "name    messages\norders  412",
+          "finding": "Orders pile up in RabbitMQ, so order intake still works. The break is downstream.",
+          "required": false
+        },
+        {
+          "id": "order-service-pods",
+          "title": "order-service pods",
+          "tool": "kubectl",
+          "query": "kubectl get pods -n pets -l app=order-service",
+          "output": "NAME                            READY   STATUS    RESTARTS\norder-service-6f7b9c8d5-4hjkl   1/1     Running   0\norder-service-6f7b9c8d5-p2xzq   1/1     Running   0",
+          "finding": "order-service is healthy; it only publishes orders to RabbitMQ.",
+          "required": false
+        }
+      ],
+      "rootCauses": [
+        { "id": "mongodb-scaled-to-zero", "label": "MongoDB was scaled to 0 replicas, so makeline-service lost its database", "correct": true },
+        { "id": "makeline-bug", "label": "A bug in makeline-service makes it fail readiness checks" },
+        { "id": "rabbitmq-overloaded", "label": "RabbitMQ is overloaded and dropping orders" },
+        { "id": "mongodb-disk-full", "label": "MongoDB's persistent volume is full" }
+      ],
+      "mitigations": [
+        {
+          "id": "scale-mongodb",
+          "label": "Scale MongoDB back to 1 replica",
+          "command": "kubectl scale deployment/mongodb -n pets --replicas=1",
+          "risk": "Starts MongoDB and reattaches its PersistentVolumeClaim.",
+          "outcome": "mongodb is 1/1 Ready. makeline-service reconnects and drains the 412 queued orders.",
+          "correct": true
+        },
+        {
+          "id": "reapply-baseline",
+          "label": "Reapply the sandbox baseline manifest",
+          "command": "kubectl apply -f k8s/base/application.yaml",
+          "risk": "Resets every pets workload to its known-good spec.",
+          "outcome": "MongoDB returns to 1 replica and makeline-service drains the queue.",
+          "correct": true
+        },
+        {
+          "id": "restart-makeline",
+          "label": "Restart makeline-service",
+          "command": "kubectl rollout restart deployment/makeline-service -n pets",
+          "risk": "Recreates makeline-service pods.",
+          "outcome": "makeline-service fails readiness again. MongoDB is still at 0 replicas."
+        },
+        {
+          "id": "purge-queue",
+          "label": "Purge the orders queue to clear the backlog",
+          "command": "kubectl exec -n pets deploy/rabbitmq -- rabbitmqctl purge_queue orders",
+          "risk": "Permanently deletes 412 customer orders.",
+          "outcome": "You deleted 412 customer orders and makeline-service is still down. Never destroy data to quiet an alert."
+        }
+      ],
+      "lesson": "Follow the dependency chain before you act. The loudest service is often a victim of something further down. This is a generic Kubernetes dependency failure illustrated with MongoDB; Microsoft Learn documents MongoDB high-availability patterns, not this exact scale-to-zero outage.",
+      "learn": [
+        { "title": "Azure SRE Agent incident response", "url": "https://learn.microsoft.com/en-us/azure/sre-agent/incident-response" },
+        { "title": "MongoDB high availability on AKS", "url": "https://learn.microsoft.com/en-us/azure/aks/mongodb-overview" },
+        { "title": "Troubleshoot AKS service connectivity", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/troubleshoot-connection-pods-services-same-cluster" }
+      ]
+    },
+    {
+      "id": "service-mismatch",
+      "step": 3,
+      "title": "Orders fail, but every pod is green",
+      "alert": {
+        "name": "Order placement failure rate > 20%",
+        "severity": "Sev2",
+        "source": "Application Insights alert",
+        "summary": "Most POST /api/orders requests from store-front fail. No pods are restarting."
+      },
+      "health": { "store-front": "degraded", "order-service": "degraded" },
+      "evidence": [
+        {
+          "id": "pod-inventory",
+          "title": "Pod health",
+          "tool": "Log Analytics · KubePodInventory",
+          "query": "KubePodInventory\n| where TimeGenerated > ago(15m) and Namespace == \"pets\"\n| summarize Restarts = max(ContainerRestartCount) by ControllerName, PodStatus",
+          "output": "ControllerName      PodStatus  Restarts\nstore-front         Running    0\norder-service       Running    0\nproduct-service     Running    0\nmakeline-service    Running    0\nrabbitmq            Running    0\nmongodb             Running    0",
+          "finding": "Every pod is Running with zero restarts. The fault isn't inside a container.",
+          "required": true
+        },
+        {
+          "id": "store-front-logs",
+          "title": "store-front proxy errors",
+          "tool": "Log Analytics · ContainerLogV2",
+          "query": "ContainerLogV2\n| where PodNamespace == \"pets\" and ContainerName == \"store-front\"\n| where LogMessage has \"order-service\"\n| project TimeGenerated, LogMessage\n| take 2",
+          "output": "10:12:40  connect() failed (111: Connection refused) while connecting to upstream, upstream: \"http://order-service:3000/order\"\n10:12:44  connect() failed (111: Connection refused) while connecting to upstream, upstream: \"http://order-service:3000/order\"",
+          "finding": "store-front can resolve order-service, but nothing accepts the connection.",
+          "required": false
+        },
+        {
+          "id": "describe-service",
+          "title": "Service selector and EndpointSlice",
+          "tool": "kubectl",
+          "query": "kubectl get service order-service -n pets -o jsonpath='{.spec.selector}{\"\\n\"}'\nkubectl get endpointslice -n pets --selector kubernetes.io/service-name=order-service",
+          "output": "{\"app\":\"order-service-v2\"}\nNAME                         ADDRESSTYPE   PORTS   ENDPOINTS   AGE\norder-service-7xk2p          IPv4          3000    <none>       30m",
+          "finding": "The selector is app=order-service-v2, and the EndpointSlice has no endpoints. Compare the selector with pod labels before changing the Service.",
+          "required": true
+        },
+        {
+          "id": "pod-labels",
+          "title": "order-service pod labels",
+          "tool": "kubectl",
+          "query": "kubectl get pods -n pets -l app=order-service --show-labels",
+          "output": "NAME                            READY   STATUS    LABELS\norder-service-6f7b9c8d5-4hjkl   1/1     Running   app=order-service,pod-template-hash=6f7b9c8d5\norder-service-6f7b9c8d5-p2xzq   1/1     Running   app=order-service,pod-template-hash=6f7b9c8d5",
+          "finding": "The pods are labeled app=order-service. The Service selector matches none of them.",
+          "required": true
+        },
+        {
+          "id": "network-policies",
+          "title": "Network policies",
+          "tool": "kubectl",
+          "query": "kubectl get networkpolicy -n pets",
+          "output": "No resources found in pets namespace.",
+          "finding": "No NetworkPolicy exists, so policy isn't blocking traffic.",
+          "required": false
+        }
+      ],
+      "rootCauses": [
+        { "id": "service-selector-mismatch", "label": "The order-service Service selector doesn't match the pod labels", "correct": true },
+        { "id": "order-service-crash", "label": "order-service pods are crashing" },
+        { "id": "network-policy-block", "label": "A NetworkPolicy blocks store-front → order-service" },
+        { "id": "dns-failure", "label": "Cluster DNS can't resolve order-service" }
+      ],
+      "mitigations": [
+        {
+          "id": "fix-selector",
+          "label": "Point the Service selector back at app=order-service",
+          "command": "kubectl patch service order-service -n pets -p '{\"spec\":{\"selector\":{\"app\":\"order-service\"}}}'",
+          "risk": "Low. Only changes which pods the Service routes to.",
+          "outcome": "Endpoints fill with 2 pod IPs and order failures drop to 0%.",
+          "correct": true
+        },
+        {
+          "id": "reapply-baseline",
+          "label": "Reapply the sandbox baseline manifest",
+          "command": "kubectl apply -f k8s/base/application.yaml",
+          "risk": "Resets every pets workload to its known-good spec.",
+          "outcome": "The Service selector returns to app=order-service and orders flow again.",
+          "correct": true
+        },
+        {
+          "id": "restart-order-service",
+          "label": "Restart order-service",
+          "command": "kubectl rollout restart deployment/order-service -n pets",
+          "risk": "Recreates order-service pods.",
+          "outcome": "New pods get the same labels. The Service still selects nothing and orders keep failing."
+        },
+        {
+          "id": "delete-service",
+          "label": "Delete the order-service Service",
+          "command": "kubectl delete service order-service -n pets",
+          "risk": "Removes the order-service DNS name.",
+          "outcome": "Now order-service doesn't resolve at all. You widened the outage."
+        }
+      ],
+      "lesson": "Healthy pods don't guarantee a healthy service. When pods are fine but traffic fails, compare Service selectors with pod labels and check endpoints.",
+      "learn": [
+        { "title": "Network concepts for applications in AKS", "url": "https://learn.microsoft.com/en-us/azure/aks/concepts-network-services" },
+        { "title": "Troubleshoot AKS service and EndpointSlice connectivity", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/connection-issues-application-hosted-aks-cluster" },
+        { "title": "Validate pod and service connectivity in an AKS cluster", "url": "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/connectivity/troubleshoot-connection-pods-services-same-cluster" },
+        { "title": "Azure SRE Agent run modes", "url": "https://learn.microsoft.com/en-us/azure/sre-agent/run-modes" }
+      ]
+    }
+  ]
+}
