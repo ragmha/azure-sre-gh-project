@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { gradeReport, parseReport, renderReport, transitionRun } from "./report.mjs";
+import { gradeReport, parseReport, renderReport, roundScore, shiftScore, transitionRun } from "./report.mjs";
 
 const { app, scenarios } = JSON.parse(await readFile(new URL("./scenarios.json", import.meta.url), "utf8"));
 const services = new Set(app.tiers.flatMap(tier => tier.services));
@@ -117,4 +117,58 @@ test("a wrong mitigation fails simulated verification and requires reapproval", 
     run = transitionRun(scenario, run, action("retry"));
     assert.equal(run.approved, null);
     assert.equal(run.evidence.length, scenario.evidence.filter(item => item.required).length);
+});
+
+const verifiedRun = (scenario, extra = {}) => ({
+    evidence: scenario.evidence.filter(item => item.required).map(item => item.id),
+    rootCause: scenario.rootCauses.find(item => item.correct).id,
+    proposal: null,
+    reviewedPlan: true,
+    approved: { mitigationId: scenario.mitigations.find(item => item.correct).id, by: "@mona" },
+    applied: scenario.mitigations.find(item => item.correct).id,
+    verification: "passed",
+    ...extra,
+});
+
+test("scoring rewards a verified recovery and the right diagnosis, minus each failed verification", () => {
+    const scenario = scenarios[0];
+    let run = { evidence: [], rootCause: null, proposal: null, reviewedPlan: false, approved: null, applied: null, verification: null };
+    const step = (action, extra = {}) => (run = transitionRun(scenario, run, { action, ...extra }));
+    const diagnose = () => step("diagnose", { rootCause: scenario.rootCauses.find(item => item.correct).id });
+    const attempt = mitigationId => {
+        step("propose", { mitigationId, rationale: "" });
+        step("review-plan", { confirm: true });
+        step("approve", { approvedBy: "@mona" });
+        step("apply");
+        step("verify");
+    };
+    for (const signal of scenario.evidence.filter(item => item.required)) step("investigate", { evidenceId: signal.id });
+    diagnose();
+    attempt(scenario.mitigations.find(item => !item.correct).id);
+    step("verify");
+    assert.equal(run.failedChecks, 1, "re-verifying the same change isn't another failure");
+    assert.deepEqual(roundScore(scenario, run), { total: 0, stars: 0, diagnosis: 0, failed: 1 }, "nothing scores before a verified recovery");
+    step("retry");
+    step("investigate", { evidenceId: scenario.evidence.find(item => !item.required).id });
+    assert.equal(run.failedChecks, 1, "new evidence clears the plan but not the failure");
+    diagnose();
+    attempt(scenario.mitigations.find(item => item.correct).id);
+    assert.deepEqual(roundScore(scenario, run), { total: 85, stars: 2, diagnosis: 40, failed: 1 });
+    assert.deepEqual(roundScore(scenario, verifiedRun(scenario)), { total: 100, stars: 3, diagnosis: 40, failed: 0 });
+    const wrongCause = scenario.rootCauses.find(item => !item.correct).id;
+    assert.deepEqual(roundScore(scenario, verifiedRun(scenario, { rootCause: wrongCause, failedChecks: 9 })), { total: 10, stars: 1, diagnosis: 0, failed: 9 });
+});
+
+test("the shift counts served customers, and a replay resets play but keeps debrief notes", () => {
+    const [first] = scenarios;
+    const played = verifiedRun(first, { failedChecks: 2, notes: "Size limits from observed usage." });
+    const shift = shiftScore(scenarios, { [first.id]: played });
+    assert.equal(shift.total, 70);
+    assert.equal(shift.served, first.shift.customers.length);
+    assert.equal(shift.customers, scenarios.reduce((sum, item) => sum + item.shift.customers.length, 0));
+    assert.equal(shift.won, false);
+    assert.equal(shiftScore(scenarios, Object.fromEntries(scenarios.map(item => [item.id, verifiedRun(item)]))).won, true);
+    const replayed = transitionRun(first, played, { action: "reset" });
+    assert.deepEqual(replayed, { evidence: [], rootCause: null, proposal: null, reviewedPlan: false, approved: null, applied: null, verification: null, failedChecks: 0, notes: played.notes });
+    assert.equal(shiftScore(scenarios, { [first.id]: replayed }).total, 0);
 });

@@ -1,9 +1,17 @@
-import { HANDLE, gradeReport, mergeState, renderReport, requiredEvidenceCollected, transitionRun } from "../lab/report.mjs";
+import { HANDLE, gradeReport, mergeState, renderReport, requiredEvidenceCollected, resolved, roundScore, shiftScore, transitionRun } from "../lab/report.mjs";
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? "").replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
-const blank = () => ({ evidence: [], rootCause: null, proposal: null, reviewedPlan: false, approved: null, applied: null, verification: null, notes: "" });
+const blank = () => ({ evidence: [], rootCause: null, proposal: null, reviewedPlan: false, approved: null, applied: null, verification: null, failedChecks: 0, notes: "" });
 const motion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+const stars = count => "★".repeat(count) + "☆".repeat(3 - count);
+// Only touch the DOM when markup changes, so focus, live regions and one-shot animations aren't reset on every render.
+const shown = new WeakMap();
+const setHTML = (element, html) => {
+    if (shown.get(element) === html) return;
+    shown.set(element, html);
+    element.innerHTML = html;
+};
 
 const { app, scenarios } = await fetch("../lab/scenarios.json").then(res => res.json());
 const byId = new Map(scenarios.map(item => [item.id, item]));
@@ -15,14 +23,48 @@ let pending = null;
 let stateEvents = 0;
 let shownProposal = "";
 let shownCoachPrompt = "";
+let started = false;
+let wasWon = null;
 
 const scenario = () => byId.get(state.scenarioId) ?? scenarios[0];
 const run = id => ({ ...blank(), ...state.runs[id ?? scenario().id] });
 const handle = () => (state.approver.startsWith("@") ? state.approver : `@${state.approver}`);
-const resolved = (s, r) => Boolean(r.verification === "passed" &&
-    r.applied === r.approved?.mitigationId &&
-    s.mitigations.find(item => item.id === r.approved?.mitigationId)?.correct);
 const phaseNames = ["Investigate", "Review plan", "Approve & apply", "Verify", "Debrief"];
+
+// The shop scene: each service is a station, each incident brings three customers. Everything drawn comes from game state.
+const STATIONS = {
+    "store-front": "Shop counter", "store-admin": "Back office", "order-service": "Till", "product-service": "Shelf catalogue",
+    rabbitmq: "Order belt", "makeline-service": "Packing bench", mongodb: "Stockroom",
+};
+const EARS = {
+    cat: '<path d="M-14-42-10-58-3-45ZM14-42 10-58 3-45Z"/>',
+    dog: '<ellipse cx="-16" cy="-33" rx="6" ry="12"/><ellipse cx="16" cy="-33" rx="6" ry="12"/>',
+    rabbit: '<ellipse cx="-7" cy="-56" rx="5" ry="14"/><ellipse cx="7" cy="-56" rx="5" ry="14"/>',
+};
+const FACES = {
+    waiting: "M-5-25H5",
+    failed: "M-6-22Q0-28 6-22M-10-41-3-38M10-41 3-38",
+    served: "M-6-26Q0-20 6-26",
+};
+
+function renderScene(s, r) {
+    const mood = resolved(s, r) ? "served" : r.verification === "failed" ? "failed" : "waiting";
+    const line = mood === "served" ? s.shift.served : mood === "failed" ? "That change didn't help. We're still waiting." : s.shift.waiting;
+    $("#round-heading").textContent = `Incident ${s.step} of ${scenarios.length}: ${s.shift.round}`;
+    $("#scene").className = `shop ${mood}`;
+    setHTML($("#scene"), `<div class="queue"><p class="bubble">“${esc(line)}”</p>
+        <ul class="customers" aria-label="${mood === "served" ? "Customers served" : "Customers waiting"}">${s.shift.customers.map(customer => `<li>
+            <svg viewBox="-34 -76 68 104" aria-hidden="true" class="pet ${esc(customer.pet)}"><g class="fur">${EARS[customer.pet] ?? ""}<ellipse rx="22" ry="26"/><circle cy="-32" r="15"/></g>
+            <circle cx="-5" cy="-34" r="2" class="eye"/><circle cx="5" cy="-34" r="2" class="eye"/><path d="${FACES[mood]}" class="face"/>
+            ${mood === "served" ? '<rect x="12" y="-2" width="16" height="20" rx="3" class="bag"/>' : ""}</svg>
+            <span>${esc(customer.want)}</span></li>`).join("")}</ul></div>
+        <div class="floor">${app.tiers.map(tier => `<div class="tier"><h3>${esc(tier.label)}</h3>${tier.services.map(service => {
+        const health = mood === "served" ? "healthy" : s.health[service] ?? "healthy";
+        const deps = app.dependencies[service]?.join(", ");
+        return `<div class="station ${health}${mood === "served" && s.health[service] ? " recovered" : ""}" title="${deps ? `Depends on ${esc(deps)}` : "No dependencies"}">
+            <strong>${esc(STATIONS[service] ?? service)}</strong><code>${esc(service)}</code><span class="state">${health}</span></div>`;
+    }).join("")}</div>`).join("")}</div>`);
+}
 
 function phase(s, r) {
     if (!requiredEvidenceCollected(s, r.evidence)) return 0;
@@ -68,21 +110,30 @@ async function flush() {
 }
 
 async function act(action) {
+    const s = byId.get(action.scenarioId) ?? scenario();
     if (hosted) {
         await flush();
         const seen = stateEvents;
-        const response = await fetch("../api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenarioId: scenario().id, ...action }) });
+        const response = await fetch("../api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenarioId: s.id, ...action }) });
         const next = await response.json();
         if (!response.ok) throw new Error(next.error);
         // The host broadcasts every update. If an event arrived mid-request, let the stream win:
         // this response may be older and would hide newer state, such as a Copilot proposal.
         if (seen === stateEvents) state = next;
     } else {
-        const updated = transitionRun(scenario(), run(), action);
-        state = mergeState(state, { runs: { [scenario().id]: updated } });
+        const updated = transitionRun(s, run(s.id), action);
+        state = mergeState(state, { runs: { [s.id]: updated } });
         localStorage.setItem("sre-console", JSON.stringify(state));
     }
     render();
+}
+
+// Replay starts a clean shift. Saved incidents/*.md reports are files, so they stay.
+async function replay() {
+    started = true;
+    for (const item of scenarios) await act({ scenarioId: item.id, action: "reset" });
+    setState({ scenarioId: scenarios[0].id });
+    $("#round-heading").focus();
 }
 
 function render() {
@@ -93,30 +144,43 @@ function render() {
     const resolvedCount = scenarios.filter(item => resolved(item, run(item.id))).length;
     const savedCount = scenarios.filter(item => progress[item.id]?.saved).length;
     const passedCount = scenarios.filter(item => progress[item.id]?.passed).length;
+    const shift = shiftScore(scenarios, state.runs);
     document.title = `${s.title} · Azure SRE console`;
     $("#app-name").textContent = `${app.name} · namespace ${app.namespace}`;
     $("#shift-summary").textContent = `${resolvedCount}/${scenarios.length} recoveries verified in simulation · ${passedCount}/${scenarios.length} debriefs pass the shared report checks`;
+    $("#shift-score").innerHTML = `Score <strong>${shift.total}</strong> · ${shift.served}/${shift.customers} customers served`;
     $("#shift-progress").value = passedCount;
     $("#queue-status").textContent = `${resolvedCount} recoveries verified · ${passedCount} debriefs pass · ${savedCount} saved`;
 
     $("#tabs").innerHTML = scenarios.map(item => {
         const p = progress[item.id] ?? {};
         const itemRun = run(item.id);
-        const status = p.passed ? "Report checks passed" : p.saved ? "Debrief needs revision" : resolved(item, itemRun) ? "Verified · simulated"
+        // A replayed incident shows its live progress; a saved report's status shows once it's verified again or not yet replayed.
+        const live = itemRun.evidence.length > 0 && !resolved(item, itemRun);
+        const status = !live && p.passed ? "Report checks passed" : !live && p.saved ? "Debrief needs revision" : resolved(item, itemRun) ? "Verified · simulated"
             : itemRun.verification === "failed" ? "Verification failed" : itemRun.applied ? "Ready to verify"
                 : itemRun.approved ? "Approved · not applied" : itemRun.proposal ? "Plan for review"
                     : itemRun.rootCause ? "Diagnosis selected" : itemRun.evidence.length ? "Investigating" : "Queued";
         const mark = p.passed || resolved(item, itemRun) ? "✓" : item.step;
-        const label = p.passed ? "report checks passed" : p.saved ? "debrief needs revision" : status;
+        const label = !live && p.passed ? "report checks passed" : !live && p.saved ? "debrief needs revision" : status;
         return `<button class="tab ${p.passed ? "passed" : p.saved ? "saved" : ""}" type="button" data-scenario="${item.id}" aria-current="${item.id === s.id ? "page" : "false"}" title="Step ${item.step}: ${esc(label)}">
             <span class="mark">${mark}</span><span><small>${esc(status)}</small>${esc(item.title)}</span></button>`;
     }).join("");
 
     const complete = passedCount === scenarios.length;
-    $("#shift-win").hidden = !complete;
-    if (complete) {
-        $("#shift-win").innerHTML = `<div><strong>Shift complete</strong><p>All ${scenarios.length} incident debriefs pass the shared report checks used by GitHub Actions. No AKS resource was changed.</p></div>`;
-    }
+    $("#shift-win").hidden = !complete && !shift.won;
+    setHTML($("#shift-win"), !complete && !shift.won ? "" : `<div><strong>Shift complete${shift.won ? ` · ${shift.total} of ${scenarios.length * 100} points` : ""}</strong>
+        ${shift.won ? `<ol class="results">${scenarios.map((item, index) => {
+        const round = shift.rounds[index];
+        const report = progress[item.id]?.passed ? "debrief passes" : progress[item.id]?.saved ? "debrief needs revision" : "debrief not saved";
+        return `<li><span aria-hidden="true">${stars(round.stars)}</span><span class="visually-hidden">${round.stars} of 3 stars</span> <strong>${round.total}</strong> ${esc(item.shift.round)} · root cause ${round.diagnosis ? "right" : "missed"} · ${round.failed} failed verification${round.failed === 1 ? "" : "s"} · ${report}</li>`;
+    }).join("")}</ol>` : ""}
+        <p>${complete ? `All ${scenarios.length} incident debriefs pass the shared report checks used by GitHub Actions.` : "Save each debrief to finish the exercise."} No AKS resource was changed.</p></div>
+        ${shift.won ? '<button id="replay" type="button">Replay shift</button>' : ""}`);
+    if (wasWon === false && shift.won) $("#shift-win").scrollIntoView({ block: "nearest", behavior: motion });
+    wasWon = shift.won;
+    $("#intro").hidden = started || scenarios.some(item => run(item.id).evidence.length > 0);
+    renderScene(s, r);
 
     $("#stage-track").innerHTML = phaseNames.map((name, index) => {
         const completeStage = index === 0 ? requiredEvidenceCollected(s, r.evidence)
@@ -139,16 +203,11 @@ function render() {
         ? `<span class="sev">Resolved · simulation</span><div><strong>${esc(s.alert.name)}</strong><p>${esc(s.mitigations.find(item => item.id === r.applied).outcome)}</p><small class="muted">Recorded, not live Azure telemetry.</small></div>`
         : `<span class="sev">${esc(s.alert.severity)}</span><div><strong>${esc(s.alert.name)}</strong><p>${esc(s.alert.summary)}</p><small class="muted">${esc(s.alert.source)}</small></div>`;
 
-    $("#topology").innerHTML = app.tiers.map(tier => `<div class="tier"><h3>${esc(tier.label)}</h3>${tier.services.map(service => {
-        const health = fixed ? "healthy" : s.health[service] ?? "healthy";
-        const deps = app.dependencies[service]?.join(", ");
-        return `<div class="svc ${health}" title="${deps ? `Depends on ${esc(deps)}` : "No dependencies"}"><span class="dot"></span><span class="name">${esc(service)}</span><span class="state">${health}</span></div>`;
-    }).join("")}</div>`).join("");
-
     const requiredReady = requiredEvidenceCollected(s, r.evidence);
     $("#signal-count").textContent = `${r.evidence.length} of ${s.evidence.length} revealed · ${s.evidence.filter(item => item.required && r.evidence.includes(item.id)).length}/${s.evidence.filter(item => item.required).length} required`;
     $("#investigate-hint").textContent = requiredReady ? "Required seeded signals collected. Ask Copilot to challenge what the evidence supports." : "Reveal signal samples. Collect every required sample before diagnosing.";
-    const reportPassed = Boolean(progress[s.id]?.passed);
+    // A verified incident with a passing report is locked; a replayed one is playable again.
+    const reportPassed = fixed && Boolean(progress[s.id]?.passed);
     $("#signals").innerHTML = s.evidence.map(item => `<button class="signal" type="button" data-evidence="${item.id}" aria-pressed="${r.evidence.includes(item.id)}" ${reportPassed ? "disabled" : ""}>
         <span>${esc(item.title)}</span><small>${esc(item.tool)}</small></button>`).join("");
     $("#evidence").innerHTML = s.evidence.filter(item => r.evidence.includes(item.id)).map(item => `<article class="evidence" id="ev-${item.id}">
@@ -167,7 +226,7 @@ function render() {
                 : r.approved ? "Your approved plan is recorded. Apply it in the simulation, then verify separately."
                     : hosted ? "Choose a candidate or ask Copilot to propose one. Review the command, risks and expected outcome before approving."
                         : "Choose a candidate. The displayed command is never run by this preview.";
-    $("#fixes").innerHTML = s.mitigations.map(item => `<div class="option fix${r.proposal?.mitigationId === item.id ? " proposed" : ""}${r.applied === item.id ? " applied" : ""}">
+    $("#fixes").innerHTML = s.mitigations.map(item => `<div class="option fix${r.proposal?.mitigationId === item.id ? " proposed" : ""}${r.applied === item.id ? r.verification === "failed" ? " failed" : " applied" : ""}">
         <div><strong>${esc(item.label)}</strong><code>${esc(item.command)}</code><small class="muted">Risk: ${esc(item.risk)}</small></div>
         <button type="button" data-propose="${item.id}" ${!r.rootCause || reportPassed || r.proposal || r.approved ? "disabled" : ""}>Choose</button></div>`).join("");
 
@@ -207,8 +266,12 @@ function render() {
     $("#verification").hidden = !r.verification;
     if (r.verification) {
         const applied = s.mitigations.find(item => item.id === r.applied);
+        const score = roundScore(s, r);
+        const scoreLine = r.verification === "passed"
+            ? `<p class="round-score"><span aria-hidden="true">${stars(score.stars)}</span><span class="visually-hidden">${score.stars} of 3 stars</span> <strong>${score.total} points</strong>: recovery +60, root cause +${score.diagnosis}, failed verifications −${15 * score.failed}.</p>`
+            : `<p class="round-score"><strong>−15 points.</strong> The customers are still waiting.</p>`;
         $("#verification").className = `verification ${r.verification === "passed" ? "ok" : "warn"}`;
-        $("#verification").innerHTML = `<strong>${r.verification === "passed" ? "Verification passed · simulation" : "Verification failed · simulation"}</strong><p>${esc(applied.outcome)}</p>${r.verification === "failed" ? '<button type="button" data-retry>Review another mitigation</button>' : '<small>No Azure telemetry was queried.</small>'}`;
+        setHTML($("#verification"), `<strong>${r.verification === "passed" ? "Verification passed · simulation" : "Verification failed · simulation"}</strong><p>${esc(applied.outcome)}</p>${scoreLine}${r.verification === "failed" ? '<button type="button" data-retry>Review another mitigation</button>' : '<small>No Azure telemetry was queried.</small>'}`);
     }
 
     let markdown = "";
@@ -227,6 +290,8 @@ function render() {
     if (document.activeElement !== $("#notes")) $("#notes").value = r.notes;
     $("#save").disabled = !markdown;
     $("#save").textContent = hosted ? "Save debrief to incidents/" : "Download debrief";
+    const upcoming = scenarios.find(item => item.id !== s.id && !resolved(item, run(item.id)));
+    setHTML($("#next-round"), fixed && upcoming ? `<button type="button" data-scenario="${upcoming.id}">Next incident: ${esc(upcoming.title)}</button>` : "");
 
     $("#learn-links").innerHTML = s.learn.map(item => `<li><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></li>`).join("");
 }
@@ -259,8 +324,15 @@ document.addEventListener("click", async event => {
     try {
         if (target.dataset.scenario) {
             $("#save-status").textContent = "";
-            return setState({ scenarioId: target.dataset.scenario });
+            setState({ scenarioId: target.dataset.scenario });
+            return $("#round-heading").focus();
         }
+        if (target.id === "start") {
+            started = true;
+            render();
+            return $("#round-heading").focus();
+        }
+        if (target.id === "replay") return await replay();
         if (target.dataset.evidence) {
             await act({ action: "investigate", evidenceId: target.dataset.evidence });
             return $(`#ev-${target.dataset.evidence}`)?.scrollIntoView({ block: "nearest", behavior: motion });

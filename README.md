@@ -12,7 +12,7 @@ _Work a queue of three simulated AKS incidents with GitHub Copilot as your coach
 
 The default experience is a **local simulation**: its signals, service health, mitigation effects, and verification are seeded exercise data—not live telemetry, an Azure SRE Agent execution, or an AKS cluster change. The optional executable lab uses Azure Container Apps (ACA), not AKS; it is a separate, billable track.
 
-<img alt="The Azure SRE console game start: an on-call shift, three-incident queue, five response stages, Copilot coaching prompt, and simulated AKS service map." src=".github/images/sre-console.png" width="720" />
+<img alt="The Azure SRE console as a pet shop rescue shift: a score and customers-served line, a three-incident queue, a Start shift panel, and a shop scene where three customers wait while the till, order-service, is down." src=".github/images/sre-console.png" width="720" />
 
 ## Start the exercise
 
@@ -49,12 +49,14 @@ Follow the same deliberate response loop for each incident:
 
 Copilot can coach, investigate the seeded evidence, and propose a mitigation. It cannot approve for you. This is a learning control, not a security boundary.
 
+Each incident is a round in a pet shop: its services are shop stations, and three customers wait until your fix passes verification. A verified recovery scores 60, the right root cause adds 40, and each failed verification costs 15. **Replay shift** starts a clean shift; saved reports stay in `incidents/`.
+
 ## How it works
 
 | Component | Location | Purpose |
 | --- | --- | --- |
 | Scenarios | `lab/scenarios.json` | Alerts, service health, seeded signals, root causes, mitigations, and Microsoft Learn sources. |
-| Console | `console/` | Guided incident queue, staged response loop, simulation, and debrief. |
+| Console | `console/` | Pet shop scene, guided incident queue, staged response loop, scoring, simulation, and debrief. |
 | Canvas extension | `.github/extensions/sre-console/` | Opens the console and provides `get_state`, `select_scenario`, `investigate`, `propose_mitigation`, and `get_progress`. It has no approve action. |
 | Grader | `lab/check.mjs` | Checks `incidents/<scenario>.md`; the step workflows post results to the exercise issue. |
 
