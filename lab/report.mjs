@@ -63,14 +63,42 @@ export function transitionRun(scenario, run, action) {
     }
     if (action.action === "verify") {
         if (!run.approved || run.applied !== run.approved.mitigationId) throw new TypeError("Apply the approved mitigation in the simulation first.");
+        if (run.verification) return run;
         const mitigation = scenario.mitigations.find(item => item.id === run.applied);
-        return { ...run, verification: mitigation.correct ? "passed" : "failed" };
+        return mitigation.correct ? { ...run, verification: "passed" } : { ...run, verification: "failed", failedChecks: (run.failedChecks ?? 0) + 1 };
     }
     if (action.action === "retry") {
         if (run.verification !== "failed") throw new TypeError("Retry is available after a failed simulated verification.");
         return { ...run, proposal: null, reviewedPlan: false, approved: null, applied: null, verification: null };
     }
+    if (action.action === "reset") {
+        return { evidence: [], rootCause: null, proposal: null, reviewedPlan: false, approved: null, applied: null, verification: null, failedChecks: 0, notes: run.notes ?? "" };
+    }
     throw new TypeError("Unknown incident action.");
+}
+
+export const resolved = (scenario, run) => Boolean(run?.verification === "passed" &&
+    run.applied === run.approved?.mitigationId &&
+    scenario.mitigations.find(item => item.id === run.approved?.mitigationId)?.correct);
+
+// Game score: 60 for a verified recovery, 40 more for the right root cause, 15 off for each failed verification.
+export function roundScore(scenario, run = {}) {
+    const failed = run.failedChecks ?? 0;
+    if (!resolved(scenario, run)) return { total: 0, stars: 0, diagnosis: 0, failed };
+    const diagnosis = scenario.rootCauses.find(item => item.id === run.rootCause)?.correct ? 40 : 0;
+    const total = Math.max(10, 60 + diagnosis - 15 * failed);
+    return { total, stars: total === 100 ? 3 : total >= 70 ? 2 : 1, diagnosis, failed };
+}
+
+export function shiftScore(scenarios, runs = {}) {
+    const rounds = scenarios.map(scenario => ({ served: resolved(scenario, runs[scenario.id]), ...roundScore(scenario, runs[scenario.id]) }));
+    return {
+        rounds,
+        total: rounds.reduce((sum, round) => sum + round.total, 0),
+        served: scenarios.reduce((sum, scenario, index) => sum + (rounds[index].served ? scenario.shift.customers.length : 0), 0),
+        customers: scenarios.reduce((sum, scenario) => sum + scenario.shift.customers.length, 0),
+        won: rounds.every(round => round.served),
+    };
 }
 
 export function renderReport(scenario, { evidence = [], rootCause, mitigation, approvedBy = "", notes = "", verified = false }) {

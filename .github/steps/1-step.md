@@ -30,6 +30,8 @@ The console displays seeded examples of signals an engineer might gather on AKS:
 
     The console opens beside the chat. It loads from this repository's project extension in `.github/extensions/sre-console/`.
 
+1. Select **Start shift**. Each incident is a round in a pet shop: customers queue until your fix passes verification. The score rewards evidence-backed decisions, not speed, and each failed verification costs points.
+
 <details>
 <summary>No Copilot app? Use the console in a browser 🌐</summary><br/>
 

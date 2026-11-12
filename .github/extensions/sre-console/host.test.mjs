@@ -155,6 +155,23 @@ test("saves a graded report only for known incidents after approval", async t =>
     assert.deepEqual(progress["mongodb-down"], { saved: false, passed: false });
 });
 
+test("failed verifications are counted on the host, and only a replay reset clears them", async t => {
+    const { host, post } = await setup(t);
+    const scenario = host.scenarios.find(item => item.id === "oom-killed");
+    for (const signal of scenario.evidence.filter(item => item.required)) host.investigate(signal.id);
+    host.act({ action: "diagnose", rootCause: "memory-limit-too-low" });
+    host.propose("restart-pods", "A restart clears the crash loop.");
+    for (const action of [{ action: "review-plan", confirm: true }, { action: "approve", approvedBy: "@mona" }, { action: "apply" }, { action: "verify" }]) host.act(action);
+    assert.equal(host.state.runs["oom-killed"].verification, "failed");
+    assert.equal(host.state.runs["oom-killed"].failedChecks, 1);
+    assert.equal((await post("api/state", { runs: { "oom-killed": { failedChecks: 0 } } })).status, 400, "the score can't be patched directly");
+    host.act({ action: "retry" });
+    assert.equal(host.state.runs["oom-killed"].failedChecks, 1, "a retry keeps the failure on the scorecard");
+    host.act({ action: "reset" });
+    assert.deepEqual(host.state.runs["oom-killed"].evidence, []);
+    assert.equal(host.state.runs["oom-killed"].failedChecks, 0);
+});
+
 test("the server stays up until the last panel closes", async t => {
     const { host, url } = await setup(t);
     assert.equal(await host.open("panel-2", { scenario: "service-mismatch" }), url);

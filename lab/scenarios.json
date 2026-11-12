@@ -19,6 +19,16 @@
     {
       "id": "oom-killed",
       "step": 1,
+      "shift": {
+        "round": "Rush hour at the till",
+        "waiting": "The till keeps restarting halfway through my checkout.",
+        "served": "Till is steady. Orders ring up.",
+        "customers": [
+          { "pet": "cat", "want": "2 × catnip mice" },
+          { "pet": "dog", "want": "1 × squeaky ball" },
+          { "pet": "rabbit", "want": "3 × carrot chews" }
+        ]
+      },
       "title": "Checkout is crash-looping",
       "alert": {
         "name": "order-service pod restarts > 3 in 10m",
@@ -121,6 +131,16 @@
     {
       "id": "mongodb-down",
       "step": 2,
+      "shift": {
+        "round": "Paid but never packed",
+        "waiting": "I paid ten minutes ago and nothing has been packed.",
+        "served": "The packing bench is moving again.",
+        "customers": [
+          { "pet": "dog", "want": "1 × chew bone" },
+          { "pet": "rabbit", "want": "2 × hay bundles" },
+          { "pet": "cat", "want": "1 × scratch post" }
+        ]
+      },
       "title": "Orders are never fulfilled",
       "alert": {
         "name": "makeline-service availability < 50%",
@@ -224,6 +244,16 @@
     {
       "id": "service-mismatch",
       "step": 3,
+      "shift": {
+        "round": "Everything looks fine",
+        "waiting": "The shop looks fine, but my order failed three times.",
+        "served": "Orders reach the till again.",
+        "customers": [
+          { "pet": "rabbit", "want": "1 × tunnel toy" },
+          { "pet": "cat", "want": "4 × treat sticks" },
+          { "pet": "dog", "want": "1 × leash" }
+        ]
+      },
       "title": "Orders fail, but every pod is green",
       "alert": {
         "name": "Order placement failure rate > 20%",

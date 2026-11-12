@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { gradeReport, HANDLE, mergeState, renderReport, transitionRun } from "../../../lab/report.mjs";
+import { gradeReport, HANDLE, mergeState, renderReport, resolved, transitionRun } from "../../../lab/report.mjs";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json" };
 const FILES = ["console/index.html", "console/app.js", "console/styles.css", "lab/scenarios.json", "lab/report.mjs"];
@@ -13,10 +13,6 @@ export const inputSchema = {
     properties: { scenario: { type: "string", description: "Incident to open: oom-killed, mongodb-down or service-mismatch." } },
     additionalProperties: false,
 };
-
-export const resolved = (scenario, run) => Boolean(run.verification === "passed" &&
-    run.applied === run.approved?.mitigationId &&
-    scenario.mitigations.find(item => item.id === run.approved?.mitigationId)?.correct);
 
 export async function createConsoleHost(root) {
     const { scenarios } = JSON.parse(await readFile(join(root, "lab/scenarios.json"), "utf8"));
@@ -55,6 +51,7 @@ export async function createConsoleHost(root) {
                 approved: approved || null,
                 applied,
                 verification,
+                failedChecks: Number.isInteger(run.failedChecks) && run.failedChecks > 0 ? Math.min(run.failedChecks, 99) : 0,
                 notes: text(run.notes, 2000),
             };
         }
